@@ -1,5 +1,12 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
+/* ═══ BUILD INFO ═══ */
+const BUILD_TIMESTAMP = "15.03.2026, 00:53 Uhr";
+
+/* ═══ HELPERS ═══ */
+const delay = (ms) => new Promise(r => setTimeout(r, ms));
+const API_DELAY = 15000;
+
 /* ═══ STORAGE ═══ */
 const STORE_KEY = "portfolio-monitor-v4";
 const API_KEY_KEY = "portfolio-monitor-apikey";
@@ -26,30 +33,178 @@ function loadData() {
 function getApiKey() { return localStorage.getItem(API_KEY_KEY) || ""; }
 function setApiKey(key) { localStorage.setItem(API_KEY_KEY, key); }
 
-/* ═══ DEFAULT PORTFOLIO ═══ */
-const DEFAULT_STOCKS = [
-  { ticker: "GLW", name: "Corning", cost: 2909.54, sector: "Optical / Connectivity", sensitivity: "high", moat: "narrow", sell: 2, type: "capex" },
-  { ticker: "GEV", name: "GE Vernova", cost: 3809.39, sector: "Power / Energy", sensitivity: "medium", moat: "medium", sell: 5, type: "capex" },
-  { ticker: "MOD", name: "Modine", cost: 3140.22, sector: "Data Center Cooling", sensitivity: "very high", moat: "narrow", sell: 1, type: "capex" },
-  { ticker: "VRT", name: "Vertiv", cost: 3530.49, sector: "Data Center Cooling", sensitivity: "high", moat: "medium", sell: 3, type: "capex" },
-  { ticker: "NVDA", name: "NVIDIA", cost: 3174.0, sector: "AI GPUs / Chips", sensitivity: "high", moat: "wide", sell: 6, type: "capex" },
-  { ticker: "AVGO", name: "Broadcom", cost: 2647.0, sector: "ASICs / Networking", sensitivity: "high", moat: "wide", sell: 7, type: "capex" },
-  { ticker: "ASML", name: "ASML", cost: 2476.0, sector: "Semiconductor Equipment", sensitivity: "medium", moat: "wide", sell: 8, type: "capex" },
-  { ticker: "MU", name: "Micron", cost: 3483.0, sector: "Memory / HBM", sensitivity: "high", moat: "medium", sell: 4, type: "capex" },
-];
+const FINNHUB_KEY_KEY = "portfolio-monitor-finnhubkey";
+function getFmpKey() { return localStorage.getItem(FINNHUB_KEY_KEY) || ""; }
+function setFmpKey(key) { localStorage.setItem(FINNHUB_KEY_KEY, key); }
 
-const DEFAULT_TICKERS = DEFAULT_STOCKS.map(s => s.ticker);
+async function fetchEurUsdRate() {
+  // Primär: ECB-Referenzkurs (kostenlos, kein Key nötig)
+  try {
+    const r = await fetch("https://api.frankfurter.dev/v1/latest?from=USD&to=EUR");
+    const data = await r.json();
+    if (data?.rates?.EUR) return data.rates.EUR;
+  } catch (e) { console.error("EUR/USD fetch error:", e); }
+  return null;
+}
 
-const CAL = [
-  { d: "04. Mär", e: "Broadcom Q1 FY2026 Earnings", c: true },
-  { d: "10. Mär", e: "TSMC Feb-Umsatzzahlen", c: false },
-  { d: "15. Apr", e: "TSMC Q1 2026 Earnings", c: true },
-  { d: "23. Apr", e: "Alphabet Q1 Earnings – CapEx Watch", c: true },
-  { d: "29. Apr", e: "Microsoft Q3 FY2026 Earnings", c: true },
-  { d: "30. Apr", e: "Meta Q1 / Amazon Q1 Earnings", c: true },
-  { d: "27. Mai", e: "NVIDIA Q1 FY2027 Earnings", c: true },
-  { d: "27. Mai", e: "Modine Q4 FY2026 Earnings", c: false },
-];
+async function fetchStockData(tickers) {
+  const token = getFmpKey();
+  if (!token) return {};
+  const results = {};
+  for (const ticker of tickers) {
+    const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    debugPush({ ts, label: `${ticker} (quote + metrics)`, status: "pending", fmp: true, tokens: 0 });
+    const dbIdx = _debugLog.length - 1;
+    try {
+      const [quoteRes, metricsRes, recoRes, earningsRes] = await Promise.all([
+        fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${token}`),
+        fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${ticker}&metric=all&token=${token}`),
+        fetch(`https://finnhub.io/api/v1/stock/recommendation?symbol=${ticker}&token=${token}`),
+        fetch(`https://finnhub.io/api/v1/stock/earnings?symbol=${ticker}&token=${token}`),
+      ]);
+      const q = await quoteRes.json();
+      const metricsData = await metricsRes.json();
+      const m = metricsData?.metric || {};
+      const recoData = await recoRes.json();
+      const earningsData = await earningsRes.json();
+
+      if (q && q.c && q.c > 0) {
+        const fmpVal = (v) => (v !== null && v !== undefined && v !== "NULL" && v !== "" && !isNaN(v)) ? Number(v) : null;
+        const yearHigh = fmpVal(m["52WeekHigh"]);
+        const yearLow = fmpVal(m["52WeekLow"]);
+
+        // Analyst consensus (latest entry)
+        const reco = Array.isArray(recoData) && recoData.length > 0 ? recoData[0] : null;
+        const consensus = reco ? { strongBuy: reco.strongBuy || 0, buy: reco.buy || 0, hold: reco.hold || 0, sell: reco.sell || 0, strongSell: reco.strongSell || 0 } : null;
+        let consensusLabel = null;
+        if (consensus) {
+          const total = consensus.strongBuy + consensus.buy + consensus.hold + consensus.sell + consensus.strongSell;
+          if (total > 0) {
+            const score = (consensus.strongBuy * 5 + consensus.buy * 4 + consensus.hold * 3 + consensus.sell * 2 + consensus.strongSell * 1) / total;
+            consensusLabel = score >= 4.5 ? "Strong Buy" : score >= 3.5 ? "Buy" : score >= 2.5 ? "Hold" : score >= 1.5 ? "Sell" : "Strong Sell";
+          }
+        }
+
+        // Earnings surprises (last 4 quarters)
+        const earningsArr = Array.isArray(earningsData) ? earningsData.slice(0, 4) : [];
+        const surprises = earningsArr.map(e => fmpVal(e.surprisePercent)).filter(v => v !== null);
+        const beatCount = surprises.filter(v => v > 0).length;
+        const avgSurprise = surprises.length > 0 ? surprises.reduce((a, b) => a + b, 0) / surprises.length : null;
+
+        const entry = {
+          price: q.c,
+          yearHigh,
+          yearLow,
+          change: q.d,
+          changePct: q.dp,
+          marketCap: fmpVal(m.marketCapitalization),
+          fromHigh: yearHigh ? ((1 - q.c / yearHigh) * 100).toFixed(1) : null,
+          peRatio: fmpVal(m.peBasicExclExtraTTM) ?? fmpVal(m.peNormalizedAnnual),
+          forwardPE: fmpVal(m.peNormalizedAnnual),
+          pegRatio: fmpVal(m.pegAnnual),
+          pbRatio: fmpVal(m.pbAnnual),
+          dividendYield: fmpVal(m.dividendYieldIndicatedAnnual),
+          revenueGrowth: fmpVal(m.revenueGrowthQuarterlyYoy),
+          netProfitMargin: fmpVal(m.netProfitMarginTTM),
+          operatingMargin: fmpVal(m.operatingMarginTTM),
+          consensus,
+          consensusLabel,
+          beatCount,
+          avgSurprise: avgSurprise !== null ? Math.round(avgSurprise * 100) / 100 : null,
+        };
+        const missing = ["peRatio", "pegRatio", "yearHigh"].filter(k => entry[k] === null || entry[k] === undefined);
+        if (missing.length > 0) console.warn(`Finnhub ${ticker}: fehlende Kennzahlen: ${missing.join(", ")}`);
+        const parts = [`$${q.c}`];
+        if (yearHigh !== null) parts.push(`52wH $${yearHigh}`);
+        if (entry.peRatio !== null) parts.push(`P/E ${entry.peRatio.toFixed(1)}`);
+        if (entry.pegRatio !== null) parts.push(`PEG ${entry.pegRatio.toFixed(2)}`);
+        if (consensusLabel) parts.push(consensusLabel);
+        if (beatCount > 0) parts.push(`${beatCount}/4 beats`);
+        if (missing.length > 0) parts.push(`⚠${missing.length} fehlend`);
+        _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: `${ticker}: ${parts.join(" | ")}` };
+        _debugListeners.forEach(fn => fn([..._debugLog]));
+        results[ticker] = entry;
+      } else {
+        _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: quoteRes.status, detail: "Keine Kursdaten" };
+        _debugListeners.forEach(fn => fn([..._debugLog]));
+      }
+    } catch (e) {
+      _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: 0, detail: e.message };
+      _debugListeners.forEach(fn => fn([..._debugLog]));
+    }
+  }
+  return results;
+}
+
+async function fetchInsiderData(tickers) {
+  const token = getFmpKey();
+  if (!token) return {};
+  const results = {};
+  const cutoff = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+  for (const ticker of tickers) {
+    const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    debugPush({ ts, label: `${ticker} Insider`, status: "pending", fmp: true, tokens: 0 });
+    const dbIdx = _debugLog.length - 1;
+    try {
+      const r = await fetch(`https://finnhub.io/api/v1/stock/insider-transactions?symbol=${ticker}&token=${token}`);
+      const data = await r.json();
+      const txns = (data?.data || []).filter(t => t.transactionDate >= cutoff);
+      const sells = txns.filter(t => t.change < 0);
+      const buys = txns.filter(t => t.change > 0);
+      const sellVolume = sells.reduce((s, t) => s + Math.abs(t.change) * (t.transactionPrice || 0), 0);
+      const buyVolume = buys.reduce((s, t) => s + t.change * (t.transactionPrice || 0), 0);
+      results[ticker] = {
+        totalSells: sells.length,
+        totalBuys: buys.length,
+        sellVolume: Math.round(sellVolume),
+        buyVolume: Math.round(buyVolume),
+      };
+      const label = `${ticker}: ${sells.length} Verkäufe${sellVolume > 0 ? ` ($${(sellVolume/1e6).toFixed(1)}M)` : ""}, ${buys.length} Käufe`;
+      _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label };
+      _debugListeners.forEach(fn => fn([..._debugLog]));
+    } catch (e) {
+      _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: 0, detail: e.message };
+      _debugListeners.forEach(fn => fn([..._debugLog]));
+    }
+  }
+  return results;
+}
+
+// Hyperscaler-Ticker für CapEx-Trajectory (immer im Kalender + als "kritisch" markiert)
+const HYPERSCALER_TICKERS = ["GOOGL", "META", "MSFT", "AMZN", "TSM"];
+
+async function fetchEarningsCalendar(token, portfolioTickers) {
+  if (!token) return [];
+  const today = new Date();
+  const from = today.toISOString().slice(0, 10);
+  const to = new Date(today.getTime() + 120 * 86400000).toISOString().slice(0, 10);
+  const calendarTickers = new Set([...portfolioTickers, ...HYPERSCALER_TICKERS]);
+  const criticalTickers = new Set([...portfolioTickers, ...HYPERSCALER_TICKERS]);
+  try {
+    const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${token}`);
+    const data = await r.json();
+    if (!data?.earningsCalendar) return [];
+    return data.earningsCalendar
+      .filter(e => calendarTickers.has(e.symbol))
+      .map(e => {
+        const d = new Date(e.date);
+        const day = String(d.getDate()).padStart(2, "0");
+        const months = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+        return {
+          d: `${day}. ${months[d.getMonth()]}`,
+          e: `${e.symbol} Q${e.quarter} FY${e.year} Earnings`,
+          c: criticalTickers.has(e.symbol),
+          date: e.date,
+          epsEstimate: e.epsEstimate,
+          revenueEstimate: e.revenueEstimate,
+        };
+      })
+      .sort((a, b) => a.date.localeCompare(b.date));
+  } catch (e) {
+    console.warn("Earnings calendar fetch failed:", e.message);
+    return [];
+  }
+}
 
 const PH = [
   { n: "Grün", co: "#22c55e", i: "✦", t: "Alle Indikatoren positiv, CapEx steigt", a: "DCA fortsetzen, volle Exposition halten" },
@@ -83,37 +238,86 @@ function cleanText(s) {
   return s.replace(/<\/?[^>]+(>|$)/g, "").replace(/\s{2,}/g, " ").trim();
 }
 
+/* ═══ DEBUG LOG ═══ */
+let _debugListeners = [];
+let _debugLog = [];
+function debugPush(entry) {
+  _debugLog.push(entry);
+  _debugListeners.forEach(fn => fn([..._debugLog]));
+}
+function debugClear() { _debugLog = []; _debugListeners.forEach(fn => fn([])); }
+function debugSaveToServer(stocks, finnhubData, eurUsdRate) {
+  const plDiag = stocks.map(s => {
+    const fhd = finnhubData[s.ticker];
+    const price = fhd?.price;
+    const pps = s.pricePerShare;
+    const pl = (price && pps && eurUsdRate) ? (((price * eurUsdRate) - pps) / pps * 100).toFixed(1) + "%" : null;
+    return {
+      ticker: s.ticker, pricePerShare: pps || null, currentPriceUsd: price || null,
+      eurUsdRate: eurUsdRate || null, currentPriceEur: price && eurUsdRate ? +(price * eurUsdRate).toFixed(2) : null,
+      pl, missing: [!pps && "pricePerShare", !price && "finnhubPrice", !eurUsdRate && "eurUsdRate"].filter(Boolean),
+    };
+  });
+  const payload = { timestamp: new Date().toISOString(), debugLog: _debugLog, performanceDiag: plDiag };
+  fetch("/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }).catch(() => {});
+}
+function useDebugLog() {
+  const [log, setLog] = React.useState(_debugLog);
+  React.useEffect(() => { _debugListeners.push(setLog); return () => { _debugListeners = _debugListeners.filter(f => f !== setLog); }; }, []);
+  return log;
+}
+
 async function callAPI(user, sys, useSearch, maxTokens) {
   const apiKey = getApiKey();
   if (!apiKey) throw new Error("Kein API-Key gesetzt. Bitte in den Einstellungen hinterlegen.");
   const body = {
     model: "claude-sonnet-4-20250514",
     max_tokens: maxTokens || 1000,
+    temperature: 0,
     system: sys,
     messages: [{ role: "user", content: user }],
   };
   if (useSearch) body.tools = [{ type: "web_search_20250305", name: "web_search" }];
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify(body),
-  });
-  if (!r.ok) throw new Error(`API ${r.status}: ${r.statusText}`);
-  const d = await r.json();
-  return (d.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+  const label = useSearch ? user.slice(0, 60) : (sys || "").slice(0, 40);
+  const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  debugPush({ ts, label, status: "pending", search: !!useSearch, tokens: maxTokens || 1000 });
+  const idx = _debugLog.length - 1;
+  try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) {
+      _debugLog[idx] = { ..._debugLog[idx], status: "error", code: r.status, detail: r.statusText };
+      _debugListeners.forEach(fn => fn([..._debugLog]));
+      throw new Error(`API ${r.status}: ${r.statusText}`);
+    }
+    const d = await r.json();
+    _debugLog[idx] = { ..._debugLog[idx], status: "ok", code: 200 };
+    _debugListeners.forEach(fn => fn([..._debugLog]));
+    return (d.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
+  } catch (e) {
+    if (_debugLog[idx].status === "pending") {
+      _debugLog[idx] = { ..._debugLog[idx], status: "error", code: 0, detail: e.message };
+      _debugListeners.forEach(fn => fn([..._debugLog]));
+    }
+    throw e;
+  }
 }
 
-async function doSearch(query) {
+async function doSearch(query, maxTok) {
   try {
     const raw = await callAPI(
-      `Search for: "${query}"\nAfter searching, respond ONLY with a JSON object (no backticks, no markdown, no citations, no HTML tags):\n{"summary":"2-3 plain text sentences summarizing findings","sentiment":"bullish|bearish|neutral","keyPoints":["point1","point2"],"confidence":0.8}\n\nIMPORTANT: The summary and keyPoints must be plain text only. No HTML, no <cite> tags, no markdown.`,
-      "Financial research analyst. Use web_search to find data. Then respond with ONLY a raw JSON object. Plain text values only — no HTML tags, no citations, no markdown formatting. No text before or after the JSON.",
-      true
+      `Search: "${query}"\nRespond ONLY with raw JSON, no backticks/HTML:\n{"summary":"2-3 sentences","sentiment":"bullish|bearish|neutral","keyPoints":["point1","point2"],"confidence":0.8}`,
+      "Financial analyst. Use web_search, then respond with ONLY raw JSON. No HTML, no markdown, no text outside JSON.",
+      true,
+      maxTok || 500
     );
     const j = extractJSON(raw);
     if (j && j.summary) {
@@ -127,7 +331,36 @@ async function doSearch(query) {
   }
 }
 
-async function doAnalyze(allData, stockList) {
+async function doMultiSearch(query, keys) {
+  try {
+    const keyList = keys.map(k => `"${k}"`).join(", ");
+    const raw = await callAPI(
+      `Search: "${query}"\nRespond ONLY with raw JSON for each topic (${keyList}), no backticks/HTML:\n{${keys.map(k => `"${k}":{"summary":"2-3 sentences","sentiment":"bullish|bearish|neutral","keyPoints":["point1"],"confidence":0.8}`).join(",")}}`,
+      "Financial analyst. Use web_search, then respond with ONLY raw JSON. No HTML, no markdown, no text outside JSON.",
+      true,
+      Math.min(400 * keys.length, 1200)
+    );
+    const j = extractJSON(raw);
+    if (j) {
+      const results = {};
+      for (const k of keys) {
+        if (j[k] && j[k].summary) {
+          j[k].summary = cleanText(j[k].summary);
+          if (j[k].keyPoints) j[k].keyPoints = j[k].keyPoints.map(p => cleanText(String(p)));
+          results[k] = j[k];
+        } else {
+          results[k] = { summary: "Keine Daten", sentiment: "neutral", keyPoints: [], confidence: 0.2 };
+        }
+      }
+      return results;
+    }
+    return Object.fromEntries(keys.map(k => [k, { summary: "Parsing fehlgeschlagen", sentiment: "neutral", keyPoints: [], confidence: 0.2 }]));
+  } catch (e) {
+    return Object.fromEntries(keys.map(k => [k, { summary: "Fehler: " + e.message, sentiment: "neutral", keyPoints: [], confidence: 0 }]));
+  }
+}
+
+async function doAnalyze(allData, stockList, fmpData, insiderDataMap) {
   const capexTickers = stockList.filter(s => s.type === "capex").map(s => s.ticker).join(", ");
   const otherInfo = stockList.filter(s => s.type === "other").map(s => `${s.ticker} (${s.sector})`).join(", ");
   const compact = {};
@@ -142,16 +375,50 @@ async function doAnalyze(allData, stockList) {
     }
   }
   if (allData.insider) compact.insider = { sentiment: allData.insider.sentiment, summary: (allData.insider.summary || "").slice(0, 150) };
+
+  let fmpBlock = "";
+  if (fmpData && Object.keys(fmpData).length > 0) {
+    const peVals = Object.values(fmpData).map(d => d.peRatio).filter(v => v !== null);
+    const pegVals = Object.values(fmpData).map(d => d.pegRatio).filter(v => v !== null);
+    const avgPE = peVals.length > 0 ? (peVals.reduce((a, b) => a + b, 0) / peVals.length).toFixed(1) : "n/a";
+    const avgPEG = pegVals.length > 0 ? (pegVals.reduce((a, b) => a + b, 0) / pegVals.length).toFixed(2) : "n/a";
+
+    const lines = Object.entries(fmpData).map(([t, d]) => {
+      let line = `${t}: Kurs=$${d.price}, 52wHoch=$${d.yearHigh ?? "n/a"}, ` +
+        `P/E=${d.peRatio ?? "n/a"}, PEG=${d.pegRatio ?? "n/a"}, ` +
+        `Umsatzwachstum=${d.revenueGrowth != null ? (d.revenueGrowth * 100).toFixed(1) + "%" : "n/a"}, Nettomarge=${d.netProfitMargin != null ? (d.netProfitMargin * 100).toFixed(1) + "%" : "n/a"}`;
+      if (d.consensusLabel) line += `, Konsens=${d.consensusLabel}(${d.consensus.buy}Buy/${d.consensus.hold}Hold/${d.consensus.sell}Sell)`;
+      if (d.beatCount != null) line += `, Earnings=${d.beatCount}/4 beats${d.avgSurprise != null ? ` (avg ${d.avgSurprise > 0 ? "+" : ""}${d.avgSurprise}%)` : ""}`;
+      return line;
+    });
+    fmpBlock = `\n\nFundamentaldaten (exakte Zahlen, als Fakten verwenden):\nPortfolio-Durchschnitt: P/E=${avgPE}, PEG=${avgPEG}\n${lines.join("\n")}`;
+  }
+
+  // Insider-Daten (strukturiert aus Finnhub)
+  let insiderBlock = "";
+  if (insiderDataMap && Object.keys(insiderDataMap).length > 0) {
+    const insLines = Object.entries(insiderDataMap).map(([t, d]) =>
+      `${t}: ${d.totalSells} Verkäufe ($${(d.sellVolume/1e6).toFixed(1)}M), ${d.totalBuys} Käufe ($${(d.buyVolume/1e6).toFixed(1)}M) — letzte 90 Tage`
+    );
+    insiderBlock = `\n\nInsider-Transaktionen (exakte Daten):\n${insLines.join("\n")}`;
+  }
+
+  // Sektor-Konzentration
+  const sectorCounts = {};
+  stockList.forEach(s => { sectorCounts[s.sector] = (sectorCounts[s.sector] || 0) + 1; });
+  const concBlock = `\n\nPortfolio-Konzentration: ${Object.entries(sectorCounts).map(([s, c]) => `${s}: ${c}/${stockList.length}`).join(", ")}`;
+
   try {
     const raw = await callAPI(
       `Portfolio: CapEx-Aktien: ${capexTickers}${otherInfo ? ". Andere: " + otherInfo : ""}
-Daten: ${JSON.stringify(compact)}
+Daten: ${JSON.stringify(compact)}${fmpBlock}${insiderBlock}${concBlock}
 
 Antworte NUR mit validem JSON. Kein Markdown, keine Backticks, kein Text davor oder danach:
 {"overallStatus":"green","explanation":"1-2 Sätze deutsch","capexTrend":"accelerating","alerts":[{"name":"CapEx-Wende","status":"green","detail":"deutsch"},{"name":"TSMC-Trend","status":"green","detail":"deutsch"},{"name":"DRAM-Preise","status":"green","detail":"deutsch"},{"name":"Bewertungsrisiko","status":"yellow","detail":"deutsch"},{"name":"Insider-Aktivität","status":"green","detail":"deutsch"},{"name":"NVIDIA-Guidance","status":"green","detail":"deutsch"}],"risks":["deutsch1","deutsch2","deutsch3"],"action":"deutsch","nextEvent":"deutsch"}
 
 overallStatus: green=klar, yellow=1-2 Warnungen, orange=3+, red=bestätigte Kürzungen.
-capexTrend: accelerating/stable/decelerating/contracting. Immer 6 alerts. Alles deutsch.`,
+capexTrend: accelerating/stable/decelerating/contracting. Immer 6 alerts. Alles deutsch.
+Nutze die Fundamentaldaten für Bewertungsrisiko (P/E, PEG vs. Portfolio-Durchschnitt). Nutze Insider-Daten für Insider-Alert. Berücksichtige Klumpenrisiko bei der Risikoeinschätzung.`,
       "Du bist ein Portfolio-Stratege. Antworte NUR mit validem JSON. Kein Markdown. Keine Backticks. Kein Text.",
       false,
       2000
@@ -171,19 +438,42 @@ capexTrend: accelerating/stable/decelerating/contracting. Immer 6 alerts. Alles 
   }
 }
 
-async function doTimingAnalysis(priceData, stockList) {
-  const stockInfo = stockList.map(s => `${s.ticker} (${s.name}, Sektor: ${s.sector}, Kaufpreis: €${s.cost.toFixed(0)})`).join("; ");
+async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap) {
+  const stockInfo = stockList.map(s => `${s.ticker} (${s.name}, Sektor: ${s.sector}, Kaufpreis: €${s.cost.toFixed(2)})`).join("; ");
+
+  let fmpBlock = "";
+  if (fmpData && Object.keys(fmpData).length > 0) {
+    const lines = Object.entries(fmpData).map(([t, d]) => {
+      let line = `${t}: Kurs=$${d.price}, 52wHoch=$${d.yearHigh}, AbstandVomHoch=${d.fromHigh}%, ` +
+        `P/E=${d.peRatio ?? "n/a"}, PEG=${d.pegRatio ?? "n/a"}`;
+      if (d.consensusLabel) line += `, Konsens=${d.consensusLabel}`;
+      if (d.beatCount != null) line += `, Earnings ${d.beatCount}/4 beats`;
+      return line;
+    });
+    fmpBlock = `\n\nExakte Marktdaten (verwende diese Zahlen, NICHT schätzen):\n${lines.join("\n")}`;
+  }
+
+  let insiderBlock = "";
+  if (insiderDataMap && Object.keys(insiderDataMap).length > 0) {
+    const insLines = Object.entries(insiderDataMap).map(([t, d]) =>
+      `${t}: ${d.totalSells} Insider-Verkäufe ($${(d.sellVolume/1e6).toFixed(1)}M), ${d.totalBuys} Käufe — 90 Tage`
+    );
+    insiderBlock = `\n\nInsider-Transaktionen:\n${insLines.join("\n")}`;
+  }
+
   try {
     const raw = await callAPI(
       `Du analysierst Kurs-Timing für ein Portfolio. Aktien: ${stockInfo}
 
-Aktuelle Kursdaten: ${JSON.stringify(priceData)}
+Aktuelle Kursdaten: ${JSON.stringify(priceData)}${fmpBlock}${insiderBlock}
 
 Für JEDE Aktie: Bewerte ob der aktuelle Kurs eine Nachkaufgelegenheit, Halteposition, oder Gewinnmitnahme-Kandidat ist.
 
 Antworte NUR mit validem JSON:
 {"summary":"1-2 Sätze Gesamteinschätzung deutsch","stocks":[{"ticker":"XXX","action":"nachkaufen|halten|teilverkauf","signal":"strong_buy|buy|hold|take_profit|sell","reason":"1 Satz deutsch","fromHigh":"Abstand vom Hoch in %","momentum":"positiv|neutral|negativ"}],"dcaAdvice":"Empfehlung deutsch","opportunityScore":7}
 
+WICHTIG: Übernimm fromHigh exakt aus den Marktdaten oben. Nicht selbst schätzen.
+Berücksichtige Insider-Verkäufe als Warnsignal (viele Verkäufe = vorsichtiger bei Nachkauf-Empfehlung).
 opportunityScore: 1-10 (1=alles teuer, 10=alles im Ausverkauf). Alle Texte deutsch.`,
       "Du bist ein technischer Analyst und Timing-Experte. NUR valides JSON. Kein Markdown. Keine Backticks.",
       false,
@@ -194,6 +484,86 @@ opportunityScore: 1-10 (1=alles teuer, 10=alles im Ausverkauf). Alle Texte deuts
       if (j.summary) j.summary = cleanText(j.summary);
       if (j.dcaAdvice) j.dcaAdvice = cleanText(j.dcaAdvice);
       if (j.stocks) j.stocks = j.stocks.map(s => ({ ...s, reason: cleanText(s.reason) }));
+      return j;
+    }
+    return null;
+  } catch { return null; }
+}
+
+async function doSellPriority(stockList, fmpData, analysisData, timingData, insiderDataMap, eurUsdRate) {
+  const stockInfo = stockList.map(s => {
+    let info = `${s.ticker} (${s.name}, Sektor: ${s.sector}, Sensitivität: ${s.sensitivity}, Moat: ${s.moat}, Investiert: €${s.cost.toFixed(2)}`;
+    if (s.purchaseDate) {
+      const months = Math.round((Date.now() - new Date(s.purchaseDate).getTime()) / (30.44 * 86400000));
+      info += `, Erstkauf: ${s.purchaseDate} (${months}M)`;
+    }
+    if (s.pricePerShare && fmpData[s.ticker]?.price && eurUsdRate) {
+      const curEur = fmpData[s.ticker].price * eurUsdRate;
+      const plPct = ((curEur - s.pricePerShare) / s.pricePerShare * 100).toFixed(1);
+      info += `, Ø Kaufpreis: €${s.pricePerShare.toFixed(2)}, P/L: ${plPct}%`;
+    }
+    if (s.purchases?.length > 0) info += `, ${s.purchases.length} Nachkäufe`;
+    return info + ")";
+  }).join("\n");
+
+  let fmpBlock = "";
+  if (fmpData && Object.keys(fmpData).length > 0) {
+    const lines = Object.entries(fmpData).map(([t, d]) => {
+      let line = `${t}: Kurs=$${d.price}, AbstandVomHoch=${d.fromHigh ?? "n/a"}%, ` +
+        `P/E=${d.peRatio ?? "n/a"}, PEG=${d.pegRatio ?? "n/a"}, Marge=${d.netProfitMargin != null ? (d.netProfitMargin * 100).toFixed(1) + "%" : "n/a"}`;
+      if (d.consensusLabel) line += `, Konsens=${d.consensusLabel}`;
+      if (d.beatCount != null) line += `, Earnings ${d.beatCount}/4 beats`;
+      return line;
+    });
+    fmpBlock = `\nMarktdaten:\n${lines.join("\n")}`;
+  }
+
+  let insiderBlock = "";
+  if (insiderDataMap && Object.keys(insiderDataMap).length > 0) {
+    const insLines = Object.entries(insiderDataMap).map(([t, d]) =>
+      `${t}: ${d.totalSells} Verkäufe ($${(d.sellVolume/1e6).toFixed(1)}M), ${d.totalBuys} Käufe — 90 Tage`
+    );
+    insiderBlock = `\nInsider-Transaktionen:\n${insLines.join("\n")}`;
+  }
+
+  let contextBlock = "";
+  if (analysisData) contextBlock += `\nAnalyse-Status: ${analysisData.overallStatus}, CapEx-Trend: ${analysisData.capexTrend}`;
+  if (timingData?.stocks) {
+    const timLines = timingData.stocks.map(s => `${s.ticker}: ${s.signal}, ${s.reason}`);
+    contextBlock += `\nTiming:\n${timLines.join("\n")}`;
+  }
+
+  try {
+    const raw = await callAPI(
+      `Erstelle eine Verkaufspriorität für ALLE Aktien im Portfolio.
+Welche Aktie sollte bei einer Krise/Korrektur ZUERST verkauft werden (Prio 1) und welche ZULETZT?
+
+Kriterien für hohe Verkaufspriorität (zuerst verkaufen):
+- Schmaler Moat, hohe Bewertung (P/E, PEG), hohe Sensitivität
+- Negatives Momentum, weit vom Hoch entfernt
+- Schwache Fundamentaldaten
+- Hoher unrealisierter Gewinn bei kurzer Haltedauer (Gewinnmitnahme erwägen)
+- Viele Nachkäufe in kurzer Zeit (Klumpenrisiko)
+
+Kriterien für niedrige Verkaufspriorität (zuletzt verkaufen):
+- Breiter Moat, faire Bewertung, geringe Sensitivität
+- Marktführer mit dauerhaften Wettbewerbsvorteilen
+- Position im Verlust bei guten Fundamentaldaten (Erholung abwarten)
+
+Aktien:\n${stockInfo}${fmpBlock}${insiderBlock}${contextBlock}
+
+Antworte NUR mit validem JSON:
+{"priority":[{"ticker":"XXX","rank":1,"reason":"1 Satz deutsch"}],"summary":"1-2 Sätze Gesamteinschätzung deutsch"}
+
+rank: 1 = zuerst verkaufen, höchste Zahl = zuletzt verkaufen. ALLE Aktien müssen enthalten sein. Alle Texte deutsch.`,
+      "Du bist ein Portfolio-Risikomanager. NUR valides JSON. Kein Markdown. Keine Backticks.",
+      false,
+      2000
+    );
+    const j = extractJSON(raw);
+    if (j && j.priority) {
+      j.priority = j.priority.map(p => ({ ...p, reason: cleanText(p.reason) }));
+      if (j.summary) j.summary = cleanText(j.summary);
       return j;
     }
     return null;
@@ -229,13 +599,56 @@ function TypeBadge({ type }) {
 const sensColor = s => s === "very high" ? X.red : s === "high" ? X.orange : s === "medium" ? X.yellow : s === "low" ? X.green : "#64748b";
 const moatLabel = m => m === "wide" ? "Breit" : m === "medium" ? "Mittel" : m === "narrow" ? "Schmal" : m || "—";
 
+function calcPL(stock, currentPriceUsd, eurUsdRate) {
+  if (!currentPriceUsd || !stock.pricePerShare || !eurUsdRate) return null;
+  // Aktuellen USD-Kurs in EUR umrechnen
+  const currentPriceEur = currentPriceUsd * eurUsdRate;
+  // Alle Preise in EUR — Initiale Anteile
+  const nachkaufSum = (stock.purchases || []).reduce((s, p) => s + p.amount, 0);
+  const initialCost = stock.cost - nachkaufSum;
+  let totalShares = stock.pricePerShare > 0 ? initialCost / stock.pricePerShare : 0;
+  let totalInvested = initialCost;
+  for (const p of (stock.purchases || [])) {
+    if (p.pricePerShare && p.pricePerShare > 0) {
+      totalShares += p.amount / p.pricePerShare;
+    }
+    totalInvested += p.amount;
+  }
+  if (totalShares <= 0) return null;
+  const avgCost = totalInvested / totalShares;
+  const currentValue = currentPriceEur * totalShares;
+  const plPct = ((currentPriceEur - avgCost) / avgCost) * 100;
+  return { plPct, avgCost, totalShares, totalInvested, currentValue };
+}
+
+function holdingDuration(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  const now = new Date();
+  const months = (now.getFullYear() - d.getFullYear()) * 12 + now.getMonth() - d.getMonth();
+  if (months >= 12) return `${Math.floor(months / 12)}J ${months % 12}M`;
+  return `${months}M`;
+}
+
 /* ═══ SETTINGS COMPONENT ═══ */
 function Settings({ onClose }) {
   const [key, setKey] = useState(getApiKey());
   const [testResult, setTestResult] = useState(null);
   const [testing, setTesting] = useState(false);
+  const [fmpKey, setFmpKeyState] = useState(getFmpKey());
+  const [fmpResult, setFmpResult] = useState(null);
 
   const saveKey = () => { setApiKey(key); setTestResult({ ok: true, msg: "Gespeichert!" }); };
+  const saveFmpKey = () => { setFmpKey(fmpKey); setFmpResult({ ok: true, msg: "Gespeichert!" }); };
+  const testFmp = async () => {
+    setFmpResult(null);
+    try {
+      const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${fmpKey}`);
+      const d = await r.json();
+      if (d && d.c && d.c > 0) { setFmpKey(fmpKey); setFmpResult({ ok: true, msg: `OK — AAPL: $${d.c}` }); }
+      else { setFmpResult({ ok: false, msg: "Ungültiger API-Key oder keine Daten" }); }
+    } catch (e) { setFmpResult({ ok: false, msg: "Fehler: " + e.message }); }
+  };
 
   const testConnection = async () => {
     setTesting(true); setTestResult(null);
@@ -257,7 +670,6 @@ function Settings({ onClose }) {
   };
 
   const resetData = () => { if (confirm("Alle Recherche-Daten löschen?")) { localStorage.removeItem(STORE_KEY); location.reload(); } };
-  const resetPortfolio = () => { if (confirm("Portfolio auf Standard zurücksetzen?")) { const saved = loadData(); if (saved) { saved.stocks = DEFAULT_STOCKS; saveData(saved); } else { saveData({ stocks: DEFAULT_STOCKS }); } location.reload(); } };
 
   const inp = { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", fontSize: 13, color: "#e2e8f0", width: "100%", fontFamily: "'JetBrains Mono', monospace" };
   const btn = (bg, col) => ({ padding: "9px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, background: bg, color: col, fontFamily: "inherit", width: "100%" });
@@ -277,18 +689,57 @@ function Settings({ onClose }) {
         ),
         testResult && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: testResult.ok ? X.green : X.red, padding: "6px 10px", borderRadius: 8, background: testResult.ok ? `${X.green}15` : `${X.red}15` } }, testResult.msg)
       ),
+      React.createElement("div", { style: { marginBottom: 20, borderTop: "1px solid #1e293b", paddingTop: 16 } },
+        React.createElement("label", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 6, display: "block" } }, "Finnhub API Key (Fundamentaldaten)"),
+        React.createElement("div", { style: { fontSize: 10, color: "#475569", marginBottom: 8 } }, "Kostenlos auf finnhub.io — liefert exakte Kurse, 52w-High/Low, P/E, PEG"),
+        React.createElement("input", { type: "password", value: fmpKey, onChange: e => setFmpKeyState(e.target.value), placeholder: "Finnhub API Key…", style: inp }),
+        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 } },
+          React.createElement("button", { onClick: saveFmpKey, style: btn(X.indigo, "#fff") }, "Speichern"),
+          React.createElement("button", { onClick: testFmp, disabled: !fmpKey, style: btn(fmpKey ? `${X.cyan}22` : "#1e293b", fmpKey ? X.cyan : "#475569") }, "Testen")
+        ),
+        fmpResult && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: fmpResult.ok ? X.green : X.red, padding: "6px 10px", borderRadius: 8, background: fmpResult.ok ? `${X.green}15` : `${X.red}15` } }, fmpResult.msg)
+      ),
       React.createElement("div", { style: { borderTop: "1px solid #1e293b", paddingTop: 16 } },
         React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, "Gefahrenzone"),
-        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
-          React.createElement("button", { onClick: resetData, style: btn(`${X.orange}22`, X.orange) }, "Daten zurücksetzen"),
-          React.createElement("button", { onClick: resetPortfolio, style: btn(`${X.red}22`, X.red) }, "Portfolio zurücksetzen")
-        )
+        React.createElement("button", { onClick: resetData, style: btn(`${X.orange}22`, X.orange) }, "Daten zurücksetzen")
       )
     )
   );
 }
 
 /* ═══ API KEY SETUP SCREEN ═══ */
+/* ═══ DEBUG PANEL ═══ */
+function DebugPanel({ active }) {
+  const log = useDebugLog();
+  const endRef = useRef(null);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [log.length]);
+  const hasErrors = log.some(l => l.status === "error");
+  if (log.length === 0 || (!active && !hasErrors)) return null;
+  const statCol = { ok: X.green, error: X.red, pending: X.yellow };
+  const statLabel = { ok: "✓", error: "✕", pending: "⟳" };
+  return React.createElement("div", { style: { background: "#0d1117", border: "1px solid #1e293b", borderRadius: 10, padding: 12, marginTop: 10, maxHeight: 220, overflowY: "auto" } },
+    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
+      React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, `API Debug (${log.length} Calls)`),
+      React.createElement("span", { className: "m", style: { fontSize: 10, color: X.red } },
+        log.filter(l => l.status === "error").length > 0 ? `${log.filter(l => l.status === "error").length} Fehler` : ""
+      )
+    ),
+    log.map((entry, i) =>
+      React.createElement("div", { key: i, style: { display: "flex", alignItems: "flex-start", gap: 6, padding: "3px 0", borderBottom: i < log.length - 1 ? "1px solid #1e293b22" : "none" } },
+        React.createElement("span", { className: "m", style: { fontSize: 9, color: "#475569", flexShrink: 0, width: 52 } }, entry.ts),
+        React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: statCol[entry.status], flexShrink: 0, width: 12 } }, statLabel[entry.status]),
+        React.createElement("span", { style: { fontSize: 10, color: entry.status === "error" ? X.red : "#94a3b8", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } },
+          entry.status === "error" ? `${entry.code} ${entry.detail || ""} — ${entry.label}` : entry.label
+        ),
+        entry.search && React.createElement("span", { style: { fontSize: 8, padding: "1px 4px", borderRadius: 4, background: `${X.cyan}22`, color: X.cyan, flexShrink: 0 } }, "WEB"),
+        entry.fmp && React.createElement("span", { style: { fontSize: 8, padding: "1px 4px", borderRadius: 4, background: `${X.green}22`, color: X.green, flexShrink: 0 } }, "FH"),
+        React.createElement("span", { className: "m", style: { fontSize: 9, color: "#475569", flexShrink: 0 } }, entry.code || "…")
+      )
+    ),
+    React.createElement("div", { ref: endRef })
+  );
+}
+
 function SetupScreen({ onDone }) {
   const [key, setKey] = useState("");
   const [testing, setTesting] = useState(false);
@@ -335,8 +786,9 @@ function SetupScreen({ onDone }) {
 function App() {
   const [hasKey, setHasKey] = useState(!!getApiKey());
   const [showSettings, setShowSettings] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [tab, setTab] = useState("overview");
-  const [stocks, setStocks] = useState(DEFAULT_STOCKS);
+  const [stocks, setStocks] = useState([]);
   const [busy, setBusy] = useState(false);
   const [pct, setPct] = useState(0);
   const [stepName, setStepName] = useState("");
@@ -352,7 +804,15 @@ function App() {
   const [insider, setInsider] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [timing, setTiming] = useState(null);
+  const [finnhubData, setFinnhubData] = useState({});
+  const [eurUsdRate, setEurUsdRate] = useState(null);
+  const [earningsCal, setEarningsCal] = useState([]);
+  const [insiderData, setInsiderData] = useState({});
+  const [sellPriority, setSellPriority] = useState(null);
+  const [sellPrioLastRun, setSellPrioLastRun] = useState(null);
+  const [busySellPrio, setBusySellPrio] = useState(false);
   const [busyTiming, setBusyTiming] = useState(false);
+  const cancelRef = useRef(false);
   const [timingStep, setTimingStep] = useState("");
   const [dataLoaded, setDataLoaded] = useState(false);
 
@@ -368,10 +828,24 @@ function App() {
       if (saved.insider) setInsider(saved.insider);
       if (saved.analysis) setAnalysis(saved.analysis);
       if (saved.timing) setTiming(saved.timing);
+      if (saved.finnhubData) setFinnhubData(saved.finnhubData);
+      if (saved.insiderData) setInsiderData(saved.insiderData);
+      if (saved.sellPriority) setSellPriority(saved.sellPriority);
+      if (saved.sellPrioLastRun) setSellPrioLastRun(new Date(saved.sellPrioLastRun));
       if (saved.lastRun) setLastRun(new Date(saved.lastRun));
       if (saved.logs) setLogs(saved.logs);
     }
     setDataLoaded(true);
+    // Earnings-Kalender + EUR/USD-Kurs laden
+    const fhKey = getFmpKey();
+    const portfolioTickers = (saved?.stocks || []).map(s => s.ticker);
+    if (fhKey) {
+      if (portfolioTickers.length > 0) {
+        fetchEarningsCalendar(fhKey, portfolioTickers).then(cal => { if (cal.length > 0) setEarningsCal(cal); });
+        fetchStockData(portfolioTickers).then(data => { if (data && Object.keys(data).length > 0) setFinnhubData(prev => ({ ...prev, ...data })); }).catch(() => {});
+      }
+      fetchEurUsdRate().then(rate => { if (rate) setEurUsdRate(rate); }).catch(() => {});
+    }
   }, []);
 
   // Add stock form
@@ -383,7 +857,17 @@ function App() {
   const [addType, setAddType] = useState("other");
   const [addSens, setAddSens] = useState("low");
   const [addMoat, setAddMoat] = useState("medium");
+  const [addPricePerShare, setAddPricePerShare] = useState("");
+  const [addDate, setAddDate] = useState(new Date().toISOString().slice(0, 10));
   const [filling, setFilling] = useState(false);
+  const [nachkaufTicker, setNachkaufTicker] = useState(null);
+  const [nachkaufBetrag, setNachkaufBetrag] = useState("");
+  const [nachkaufPPS, setNachkaufPPS] = useState("");
+  const [nachkaufDate, setNachkaufDate] = useState(new Date().toISOString().slice(0, 10));
+  const [infoTicker, setInfoTicker] = useState(null);
+  const [showDashInfo, setShowDashInfo] = useState(false);
+  const [editPPS, setEditPPS] = useState("");
+  const [editDate, setEditDate] = useState("");
 
   const canAutofill = addTicker.trim().length > 0 || addName.trim().length > 0;
 
@@ -393,7 +877,7 @@ function App() {
     setFilling(true);
     try {
       const raw = await callAPI(
-        `Identify the stock for: "${input}" (could be ticker OR company name). Respond ONLY with raw JSON, no backticks:\n{"ticker":"SYMBOL","name":"Full Company Name","sector":"short sector description","type":"capex|other","sensitivity":"very high|high|medium|low","moat":"wide|medium|narrow"}\n\nRules:\n- type "capex" = revenue depends on hyperscaler AI CapEx\n- type "other" = NOT primarily CapEx dependent\n- sensitivity = reaction to AI infra spending\n- moat: wide=monopoly, medium=strong, narrow=many competitors`,
+        `Stock: "${input}" (ticker or name). Raw JSON only:\n{"ticker":"SYM","name":"Name","sector":"sector","type":"capex|other","sensitivity":"very high|high|medium|low","moat":"wide|medium|narrow"}\ncapex=company whose revenue significantly depends on AI/data center capital expenditure (GPUs, networking, cooling, memory, fiber optics, power infrastructure, semiconductor equipment). other=not CapEx dependent. sensitivity=how much revenue depends on CapEx spending cycles. moat: wide=monopoly/near-monopoly, narrow=many competitors`,
         "Financial analyst. Respond ONLY raw JSON. No markdown. No backticks. No explanation.",
         false
       );
@@ -422,138 +906,267 @@ function App() {
 
   const addStock = useCallback(() => {
     if (!addTicker.trim() || !addName.trim()) return;
+    const pps = parseFloat(addPricePerShare) || 0;
     const newStock = {
       ticker: addTicker.toUpperCase().trim(), name: addName.trim(),
-      cost: parseFloat(addCost) || 0, sector: addSector.trim() || "Sonstige",
+      cost: parseFloat(addCost) || 0, pricePerShare: pps, purchaseDate: addDate,
+      sector: addSector.trim() || "Sonstige",
       sensitivity: addSens, moat: addMoat, sell: stocks.length + 1, type: addType,
     };
     setStocks(prev => {
       const updated = [...prev, newStock];
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun: lastRun?.toISOString(), logs });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs });
       return updated;
     });
-    setAddTicker(""); setAddName(""); setAddSector(""); setAddCost(""); setAddType("other"); setAddSens("low"); setAddMoat("medium");
+    setAddTicker(""); setAddName(""); setAddSector(""); setAddCost(""); setAddPricePerShare(""); setAddDate(new Date().toISOString().slice(0, 10)); setAddType("other"); setAddSens("low"); setAddMoat("medium");
     setShowAdd(false);
-  }, [addTicker, addName, addSector, addCost, addType, addSens, addMoat, stocks.length, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun, logs]);
+  }, [addTicker, addName, addSector, addCost, addType, addSens, addMoat, stocks.length, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, lastRun, logs]);
 
   const removeStock = useCallback((ticker) => {
     setStocks(prev => {
       const updated = prev.filter(s => s.ticker !== ticker);
       setPositions(prevPos => {
         const newPos = { ...prevPos }; delete newPos[ticker];
-        saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions: newPos, insider, analysis, timing, lastRun: lastRun?.toISOString(), logs });
+        saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions: newPos, insider, analysis, timing, finnhubData, lastRun: lastRun?.toISOString(), logs });
         return newPos;
       });
       return updated;
     });
-  }, [capex, tsmc, dram, nvidia, insider, analysis, timing, lastRun, logs]);
+  }, [capex, tsmc, dram, nvidia, insider, analysis, timing, finnhubData, lastRun, logs]);
+
+  const updateStock = useCallback((ticker, fields) => {
+    setStocks(prev => {
+      const updated = prev.map(s => s.ticker === ticker ? { ...s, ...fields } : s);
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs });
+      return updated;
+    });
+  }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
+
+  const addNachkauf = useCallback((ticker, betrag, pps, date) => {
+    const amount = parseFloat(betrag);
+    const pricePS = parseFloat(pps);
+    if (!amount || amount <= 0 || !pricePS || pricePS <= 0) return;
+    setStocks(prev => {
+      const updated = prev.map(s => s.ticker === ticker ? { ...s, cost: s.cost + amount, purchases: [...(s.purchases || []), { amount, pricePerShare: pricePS, date: date || new Date().toISOString().slice(0, 10) }] } : s);
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs });
+      return updated;
+    });
+    setNachkaufTicker(null);
+    setNachkaufBetrag("");
+    setNachkaufPPS("");
+    setNachkaufDate(new Date().toISOString().slice(0, 10));
+  }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
 
   /* ═══ RESEARCH ═══ */
+  const cancelResearch = useCallback(() => {
+    cancelRef.current = true;
+  }, []);
+
   const run = useCallback(async () => {
-    setBusy(true); setPct(0);
+    cancelRef.current = false;
+    setBusy(true); setPct(0); debugClear();
     setCapex([]); setTsmc(null); setDram(null); setNvidia(null);
     setPositions({}); setInsider(null); setAnalysis(null); setTiming(null); setLogs([]);
     addLog("Recherche gestartet…");
 
-    const jobs = [
-      { k: "capex", l: "Alphabet CapEx", q: "Alphabet Google capital expenditure 2026 guidance latest" },
-      { k: "capex", l: "Meta CapEx", q: "Meta Platforms capex 2026 data center spending" },
-      { k: "capex", l: "Microsoft CapEx", q: "Microsoft Azure capital expenditure 2026 guidance" },
-      { k: "capex", l: "Amazon CapEx", q: "Amazon AWS capex 2026 data center guidance" },
-      { k: "tsmc", l: "TSMC Umsätze", q: "TSMC monthly revenue latest 2026" },
-      { k: "dram", l: "DRAM Preise", q: "DRAM spot price trend 2026 memory" },
-      { k: "nvidia", l: "NVIDIA Guidance", q: "NVIDIA earnings revenue guidance 2026 data center" },
-    ];
-
-    for (const s of stocks) {
-      if (s.type === "capex") {
-        jobs.push({ k: "pos", l: s.name, q: `${s.name} ${s.ticker} stock earnings news 2026 ${s.sector}`, t: s.ticker });
-      } else {
-        jobs.push({ k: "pos", l: s.name, q: `${s.name} ${s.ticker} stock earnings outlook 2026 ${s.sector} analysis`, t: s.ticker });
-      }
-    }
-    jobs.push({ k: "insider", l: "Insider-Verkäufe", q: `insider selling ${stocks.map(s => s.ticker).slice(0, 6).join(" ")} 2026` });
-
-    const total = jobs.length + 3;
+    const check = () => { if (cancelRef.current) { addLog("⛔ Abgebrochen."); setBusy(false); return true; } return false; };
     let lCapex = [], lTsmc = null, lDram = null, lNvidia = null, lPos = {}, lInsider = null;
+    let step = 0;
+    // Total: 1 Finnhub + 2 capex + 2 indicators + N positions + 1 analysis + 1 timing
+    const hasFmp = !!getFmpKey();
+    const total = (hasFmp ? 1 : 0) + 2 + 2 + stocks.length + 1 + 1;
 
-    for (let i = 0; i < jobs.length; i++) {
-      const job = jobs[i];
-      setStepName(job.l);
-      addLog("→ " + job.l);
-      const result = await doSearch(job.q);
-      addLog("  ✓ " + job.l + ": " + result.sentiment);
+    const advance = (label) => { step++; setStepName(label); setPct(Math.round((step / total) * 100)); };
 
-      if (job.k === "capex") { lCapex = [...lCapex, { label: job.l, ...result }]; setCapex([...lCapex]); }
-      else if (job.k === "tsmc") { lTsmc = result; setTsmc(result); }
-      else if (job.k === "dram") { lDram = result; setDram(result); }
-      else if (job.k === "nvidia") { lNvidia = result; setNvidia(result); }
-      else if (job.k === "pos") { lPos = { ...lPos, [job.t]: result }; setPositions({ ...lPos }); }
-      else if (job.k === "insider") { lInsider = result; setInsider(result); }
-      setPct(Math.round(((i + 1) / total) * 100));
+    // Phase 0: Finnhub Fundamentaldaten + Insider laden
+    let fmpData = {};
+    let lInsiderData = {};
+    if (hasFmp) {
+      if (check()) return;
+      advance("Fundamentaldaten (Finnhub)");
+      addLog("→ Fundamentaldaten + Insider laden (Finnhub)…");
+      const [stockDataResult, insiderResult] = await Promise.all([
+        fetchStockData(stocks.map(s => s.ticker)),
+        fetchInsiderData(stocks.map(s => s.ticker)),
+      ]);
+      fmpData = stockDataResult;
+      lInsiderData = insiderResult;
+      setFinnhubData(fmpData);
+      setInsiderData(lInsiderData);
+      const count = Object.keys(fmpData).length;
+      addLog(`  ✓ ${count}/${stocks.length} Aktien geladen`);
+      for (const [t, d] of Object.entries(fmpData)) {
+        const missing = ["peRatio", "pegRatio", "yearHigh"].filter(k => d[k] === null || d[k] === undefined);
+        if (missing.length > 0) addLog(`  ⚠ ${t}: fehlend: ${missing.join(", ")}`);
+      }
+      const insiderSells = Object.entries(lInsiderData).filter(([, d]) => d.totalSells > 0);
+      if (insiderSells.length > 0) addLog(`  ⚠ Insider-Verkäufe: ${insiderSells.map(([t, d]) => `${t}(${d.totalSells})`).join(", ")}`);
     }
 
-    setStepName("Gesamtanalyse…");
+    // Phase 1: CapEx — 2 calls instead of 4
+    if (check()) return;
+    advance("Alphabet + Meta CapEx");
+    addLog("→ Alphabet + Meta CapEx");
+    const capex1 = await doMultiSearch("Alphabet Google Meta Platforms capital expenditure capex 2026 data center spending guidance", ["Alphabet CapEx", "Meta CapEx"]);
+    lCapex.push({ label: "Alphabet CapEx", ...capex1["Alphabet CapEx"] }, { label: "Meta CapEx", ...capex1["Meta CapEx"] });
+    setCapex([...lCapex]);
+    addLog("  ✓ Alphabet: " + capex1["Alphabet CapEx"].sentiment + ", Meta: " + capex1["Meta CapEx"].sentiment);
+
+    if (check()) return;
+    await delay(API_DELAY);
+    advance("Microsoft + Amazon CapEx");
+    addLog("→ Microsoft + Amazon CapEx");
+    const capex2 = await doMultiSearch("Microsoft Azure Amazon AWS capital expenditure capex 2026 data center guidance", ["Microsoft CapEx", "Amazon CapEx"]);
+    lCapex.push({ label: "Microsoft CapEx", ...capex2["Microsoft CapEx"] }, { label: "Amazon CapEx", ...capex2["Amazon CapEx"] });
+    setCapex([...lCapex]);
+    addLog("  ✓ Microsoft: " + capex2["Microsoft CapEx"].sentiment + ", Amazon: " + capex2["Amazon CapEx"].sentiment);
+
+    // Phase 2: Leading indicators — 2 calls instead of 3
+    if (check()) return;
+    await delay(API_DELAY);
+    advance("TSMC + DRAM");
+    addLog("→ TSMC + DRAM");
+    const indicators = await doMultiSearch("TSMC monthly revenue 2026 DRAM spot price trend memory", ["TSMC", "DRAM"]);
+    lTsmc = indicators["TSMC"]; setTsmc(lTsmc);
+    lDram = indicators["DRAM"]; setDram(lDram);
+    addLog("  ✓ TSMC: " + lTsmc.sentiment + ", DRAM: " + lDram.sentiment);
+
+    if (check()) return;
+    await delay(API_DELAY);
+    advance("NVIDIA Guidance");
+    addLog("→ NVIDIA Guidance");
+    lNvidia = await doSearch("NVIDIA earnings revenue guidance 2026 data center");
+    setNvidia(lNvidia);
+    addLog("  ✓ NVIDIA: " + lNvidia.sentiment);
+
+    // Phase 3: Positions + Price — 1 call per stock
+    for (let i = 0; i < stocks.length; i++) {
+      if (check()) return;
+      await delay(API_DELAY);
+      const s = stocks[i];
+      advance(s.name);
+      addLog("→ " + s.name);
+      const query = s.type === "capex"
+        ? `${s.name} ${s.ticker} stock earnings news price 52-week high low 2026 ${s.sector}`
+        : `${s.name} ${s.ticker} stock earnings outlook price performance 2026 ${s.sector}`;
+      const result = await doSearch(query);
+      lPos = { ...lPos, [s.ticker]: result };
+      setPositions({ ...lPos });
+      addLog("  ✓ " + s.name + ": " + result.sentiment);
+    }
+
+    // Phase 4: Analysis (no web search)
+    if (check()) return;
+    await delay(API_DELAY);
+    advance("Gesamtanalyse");
     addLog("→ Gesamtanalyse…");
+    // Insider-Daten als Zusammenfassung für Analyse bereitstellen
+    lInsider = hasFmp && Object.keys(lInsiderData).length > 0
+      ? { sentiment: Object.values(lInsiderData).some(d => d.totalSells > 3) ? "bearish" : Object.values(lInsiderData).every(d => d.totalSells === 0) ? "bullish" : "neutral",
+          summary: Object.entries(lInsiderData).map(([t, d]) => `${t}: ${d.totalSells} Verkäufe ($${(d.sellVolume/1e6).toFixed(1)}M), ${d.totalBuys} Käufe`).join("; ") }
+      : lInsider;
+    setInsider(lInsider);
     const allData = { capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider };
-    const ana = await doAnalyze(allData, stocks);
+    const ana = await doAnalyze(allData, stocks, fmpData, lInsiderData);
     setAnalysis(ana);
     addLog("✓ Status: " + (ana?.overallStatus || "?"));
-    setPct(Math.round(((jobs.length + 1) / total) * 100));
 
-    setStepName("Kurs-Analyse…");
-    addLog("→ Kurs-Recherche für Timing…");
-    const priceResults = {};
-    for (const s of stocks) {
-      const pr = await doSearch(`${s.ticker} ${s.name} stock price today 52 week high low performance 2026`);
-      priceResults[s.ticker] = { sentiment: pr.sentiment, summary: (pr.summary || "").slice(0, 200) };
-    }
-    addLog("  ✓ Kursdaten für " + stocks.length + " Aktien");
-    setPct(Math.round(((jobs.length + 2) / total) * 100));
-
-    setStepName("Timing-Bewertung…");
+    // Phase 6: Timing analysis (no web search) — uses position data which already includes price info
+    if (check()) return;
+    await delay(API_DELAY);
+    advance("Timing-Bewertung");
     addLog("→ Timing-Bewertung…");
-    const tim = await doTimingAnalysis(priceResults, stocks);
+    const priceData = {};
+    for (const [ticker, data] of Object.entries(lPos)) {
+      priceData[ticker] = { sentiment: data.sentiment, summary: (data.summary || "").slice(0, 200) };
+    }
+    const tim = await doTimingAnalysis(priceData, stocks, fmpData, lInsiderData);
     setTiming(tim);
     addLog("✓ Timing: Score " + (tim?.opportunityScore || "?") + "/10");
 
     const now = new Date();
     setPct(100); setLastRun(now); setBusy(false);
+    debugSaveToServer(stocks, fmpData, eurUsdRate);
 
     setLogs(prevLogs => {
-      saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider, analysis: ana, timing: tim, lastRun: now.toISOString(), logs: prevLogs });
+      saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, lastRun: now.toISOString(), logs: prevLogs });
       return prevLogs;
     });
   }, [addLog, stocks]);
 
   /* ═══ INDEPENDENT TIMING ═══ */
   const runTiming = useCallback(async () => {
-    setBusyTiming(true);
+    setBusyTiming(true); debugClear();
     setTimingStep("Kursdaten…");
+
+    // Finnhub-Daten laden falls Key vorhanden
+    let fmpData = {};
+    let lInsiderData = {};
+    if (getFmpKey()) {
+      setTimingStep("Fundamentaldaten + Insider (Finnhub)…");
+      const [stockDataResult, insiderResult] = await Promise.all([
+        fetchStockData(stocks.map(s => s.ticker)),
+        fetchInsiderData(stocks.map(s => s.ticker)),
+      ]);
+      fmpData = stockDataResult;
+      lInsiderData = insiderResult;
+      setFinnhubData(fmpData);
+      setInsiderData(lInsiderData);
+    }
+
     const priceResults = {};
     for (let i = 0; i < stocks.length; i++) {
       const s = stocks[i];
       setTimingStep(`${s.ticker} Kurs…`);
-      const pr = await doSearch(`${s.ticker} ${s.name} stock price today 52 week high low performance 2026`);
+      if (i > 0) await delay(API_DELAY);
+      const pr = await doSearch(`${s.ticker} ${s.name} stock price 52-week high low 2026`);
       priceResults[s.ticker] = { sentiment: pr.sentiment, summary: (pr.summary || "").slice(0, 200) };
     }
+    await delay(API_DELAY);
     setTimingStep("Timing-Bewertung…");
-    const tim = await doTimingAnalysis(priceResults, stocks);
+    const tim = await doTimingAnalysis(priceResults, stocks, fmpData, lInsiderData);
     setTiming(tim);
     setBusyTiming(false);
     setTimingStep("");
+    debugSaveToServer(stocks, fmpData, eurUsdRate);
     try {
       const existing = loadData();
-      const merged = { ...(existing || {}), timing: tim, stocks };
+      const merged = { ...(existing || {}), timing: tim, finnhubData: fmpData, insiderData: lInsiderData, stocks };
       saveData(merged);
     } catch {}
   }, [stocks]);
 
+  /* ═══ SELL PRIORITY UPDATE ═══ */
+  const runSellPriority = useCallback(async () => {
+    setBusySellPrio(true);
+    const prio = await doSellPriority(stocks, finnhubData, analysis, timing, insiderData, eurUsdRate);
+    if (prio) {
+      setSellPriority(prio);
+      const now = new Date();
+      setSellPrioLastRun(now);
+      try {
+        const existing = loadData();
+        const merged = { ...(existing || {}), sellPriority: prio, sellPrioLastRun: now.toISOString(), stocks };
+        saveData(merged);
+      } catch {}
+    }
+    setBusySellPrio(false);
+  }, [stocks, finnhubData, analysis, timing]);
+
   // Derived
-  const total = stocks.reduce((s, p) => s + p.cost, 0);
+  const totalInvested = stocks.reduce((s, p) => s + p.cost, 0);
+  const hasPLData = stocks.some(pos => calcPL(pos, finnhubData[pos.ticker]?.price, eurUsdRate) !== null);
+  const totalValue = stocks.reduce((s, pos) => {
+    const pl = calcPL(pos, finnhubData[pos.ticker]?.price, eurUsdRate);
+    return s + (pl ? pl.currentValue : pos.cost);
+  }, 0);
+  const totalPL = totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0;
+  const incompleteStocks = stocks.filter(s => !s.pricePerShare || !s.purchaseDate);
   const capexStocks = stocks.filter(s => s.type === "capex");
   const otherStocks = stocks.filter(s => s.type === "other");
-  const bySell = [...capexStocks].sort((a, b) => a.sell - b.sell);
+  const bySell = sellPriority?.priority
+    ? sellPriority.priority.sort((a, b) => a.rank - b.rank).map(p => ({ ...stocks.find(s => s.ticker === p.ticker), rank: p.rank, reason: p.reason })).filter(p => p.ticker)
+    : [...stocks].sort((a, b) => (a.sell || 99) - (b.sell || 99));
   const hasData = analysis !== null;
   const st = hasData ? analysis.overallStatus : null;
   const stMap = { green: "These intakt", yellow: "Beobachten", orange: "Vorsicht", red: "Handeln" };
@@ -599,17 +1212,24 @@ function App() {
             ),
             lastRun && React.createElement("div", { className: "m", style: { fontSize: 9, color: "#475569", marginTop: 2 } }, `Update: ${lastRun.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}${dataLoaded && !busy ? " (gespeichert)" : ""}`)
           ),
+          React.createElement("div", { style: { position: "relative" } },
+            React.createElement("button", { onClick: () => setShowInfo(!showInfo), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 14, padding: 4 } }, "ⓘ"),
+            showInfo && React.createElement("div", { style: { position: "absolute", right: 0, top: 24, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: "8px 12px", whiteSpace: "nowrap", zIndex: 100, fontSize: 10, color: "#94a3b8", boxShadow: "0 4px 12px #0008" } },
+              React.createElement("span", { style: { color: "#64748b" } }, "Stand: "),
+              React.createElement("span", { className: "m", style: { color: "#e2e8f0" } }, BUILD_TIMESTAMP)
+            )
+          ),
           React.createElement("button", { onClick: () => setShowSettings(true), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 18, padding: 4 } }, "⚙")
         )
       ),
 
       /* ── BUTTON ── */
-      React.createElement("button", { onClick: run, disabled: busy, style: {
+      React.createElement("button", { onClick: busy ? cancelResearch : run, style: {
         width: "100%", padding: 11, marginTop: 10, marginBottom: 4, borderRadius: 10, border: "none",
-        cursor: busy ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit",
-        background: busy ? "#1e293b" : `linear-gradient(135deg,${X.indigo},#8b5cf6)`,
-        color: busy ? "#64748b" : "#fff", boxShadow: busy ? "none" : `0 4px 14px ${X.indigo}33`,
-      } }, busy ? `⟳ ${stepName} — ${pct}%` : `▶  Live-Recherche starten (${stocks.length} Positionen)`),
+        cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit",
+        background: busy ? `linear-gradient(135deg,${X.red},${X.orange})` : `linear-gradient(135deg,${X.indigo},#8b5cf6)`,
+        color: "#fff", boxShadow: busy ? `0 4px 14px ${X.red}33` : `0 4px 14px ${X.indigo}33`,
+      } }, busy ? `⛔ Abbrechen — ${stepName} (${pct}%)` : `▶  Live-Recherche starten (${stocks.length} Positionen)`),
 
       busy && React.createElement("div", { style: { marginTop: 6, marginBottom: 6 } },
         React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 3 } },
@@ -620,6 +1240,9 @@ function App() {
           React.createElement("div", { style: { height: "100%", width: `${pct}%`, borderRadius: 2, background: `linear-gradient(90deg,${X.indigo},${X.purple})`, transition: "width .4s" } })
         )
       ),
+
+      /* ── DEBUG PANEL (bleibt sichtbar bei Fehlern) ── */
+      React.createElement(DebugPanel, { active: busy || busyTiming }),
 
       /* ── TABS ── */
       React.createElement("div", { style: { display: "flex", gap: 2, margin: "10px 0 14px", background: "#111827", borderRadius: 10, padding: 3 } },
@@ -637,14 +1260,30 @@ function App() {
       tab === "overview" && React.createElement(React.Fragment, null,
         React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginBottom: 14 } },
           [
-            { l: "Investiert", v: `€${total.toLocaleString("de-DE", { maximumFractionDigits: 0 })}`, s: `${stocks.length} Pos.` },
+            { l: hasPLData ? "Portfolio-Wert" : "Investiert", v: `€${(hasPLData ? totalValue : totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, s: hasPLData ? `${totalPL >= 0 ? "+" : ""}${totalPL.toFixed(1)}%` : `${stocks.length} Pos.`, c: hasPLData ? (totalPL >= 0 ? X.green : X.red) : "#e2e8f0", info: hasPLData, warn: incompleteStocks.length > 0 },
             { l: "CapEx-Trend", v: hasData ? (trMap[analysis.capexTrend] || "—") : "—", c: hasData ? (analysis.capexTrend === "accelerating" ? X.green : analysis.capexTrend === "stable" ? X.yellow : X.red) : "#64748b", s: hasData ? "Live" : "" },
             { l: "Status", v: hasData ? stMap[analysis.overallStatus] : "—", c: hasData ? X[analysis.overallStatus] : "#64748b", s: hasData ? (analysis.nextEvent || "").slice(0, 32) : "" },
           ].map((c, i) =>
-            React.createElement("div", { key: i, style: { background: "#111827", borderRadius: 12, padding: "12px 11px", border: "1px solid #1e293b", minWidth: 0, overflow: "hidden" } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, c.l),
+            React.createElement("div", { key: i, style: { background: "#111827", borderRadius: 12, padding: "12px 11px", border: c.warn ? `2px solid ${X.orange}` : "1px solid #1e293b", minWidth: 0, overflow: "hidden", position: "relative" } },
+              React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } },
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
+                  React.createElement("span", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, c.l),
+                  c.warn && React.createElement("span", { title: `Unvollständige Daten: ${incompleteStocks.map(s => s.ticker).join(", ")} — Kaufpreis/Aktie oder Kaufdatum fehlt`, style: { color: X.orange, fontSize: 12, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => { setTab("positions"); } }, "⚠")
+                ),
+                c.info && React.createElement("button", { onClick: () => setShowDashInfo(!showDashInfo), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10, padding: 0, lineHeight: 1 } }, "ⓘ")
+              ),
               React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: c.c || "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, c.v),
-              c.s && React.createElement("div", { style: { fontSize: 10, color: "#475569", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, c.s)
+              c.s && React.createElement("div", { style: { fontSize: 10, color: c.c || "#475569", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, c.s),
+              c.info && showDashInfo && React.createElement("div", { style: { position: "absolute", top: "100%", left: 0, right: 0, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, zIndex: 10, marginTop: 4, fontSize: 11, color: "#94a3b8" } },
+                React.createElement("div", null, `Investiert: €${totalInvested.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+                React.createElement("div", { style: { marginTop: 3 } }, `Aktueller Wert: €${totalValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+                React.createElement("div", { style: { marginTop: 3, color: totalPL >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: ${totalPL >= 0 ? "+" : ""}${totalPL.toFixed(1)}% (€${(totalValue - totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`),
+                React.createElement("div", { style: { marginTop: 3 } }, `${stocks.length} Positionen`),
+                incompleteStocks.length > 0 && React.createElement("div", { style: { marginTop: 5, paddingTop: 5, borderTop: "1px solid #334155", color: X.orange } },
+                  React.createElement("div", { style: { fontWeight: 600, marginBottom: 3 } }, `⚠ ${incompleteStocks.length} Aktien unvollständig:`),
+                  incompleteStocks.map(s => React.createElement("div", { key: s.ticker, style: { marginTop: 2 } }, `${s.ticker}: ${[!s.pricePerShare && "Kaufpreis/Aktie", !s.purchaseDate && "Kaufdatum"].filter(Boolean).join(", ")} fehlt`))
+                )
+              )
             )
           )
         ),
@@ -731,6 +1370,14 @@ function App() {
             React.createElement("div", null,
               React.createElement("div", { style: { fontSize: 10, color: "#64748b", marginBottom: 3 } }, "Investiert (€)"),
               React.createElement("input", { value: addCost, onChange: e => setAddCost(e.target.value), placeholder: "0", type: "number", style: inp })
+            ),
+            React.createElement("div", null,
+              React.createElement("div", { style: { fontSize: 10, color: "#64748b", marginBottom: 3 } }, "Kaufpreis/Aktie (€)"),
+              React.createElement("input", { value: addPricePerShare, onChange: e => setAddPricePerShare(e.target.value), placeholder: "0", type: "number", style: inp })
+            ),
+            React.createElement("div", null,
+              React.createElement("div", { style: { fontSize: 10, color: "#64748b", marginBottom: 3 } }, "Kaufdatum"),
+              React.createElement("input", { value: addDate, onChange: e => setAddDate(e.target.value), type: "date", style: inp })
             )
           ),
           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 } },
@@ -771,25 +1418,57 @@ function App() {
         capexStocks.length > 0 && React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.purple, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".06em" } }, `CapEx-abhängig (${capexStocks.length})`),
         [...capexStocks].sort((a, b) => a.sell - b.sell).map(pos => {
           const pr = positions[pos.ticker];
-          return React.createElement("div", { key: pos.ticker, style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13, marginBottom: 8 } },
+          const fhd = finnhubData[pos.ticker];
+          const pl = calcPL(pos, fhd?.price, eurUsdRate);
+          const incomplete = !pos.pricePerShare || !pos.purchaseDate;
+          return React.createElement("div", { key: pos.ticker, style: { background: "#111827", borderRadius: 12, border: incomplete ? `2px solid ${X.orange}` : "1px solid #1e293b", padding: 13, marginBottom: 8 } },
             React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9 } },
                 React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.purple } }, pos.ticker),
                 React.createElement("div", null,
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
                     React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, pos.name),
-                    React.createElement(TypeBadge, { type: "capex" })
+                    React.createElement(TypeBadge, { type: "capex" }),
+                    (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — ⓘ klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
                   ),
                   React.createElement("div", { style: { fontSize: 10, color: "#64748b" } }, `${pos.sector} · Sensitivität: `, React.createElement("span", { style: { color: sensColor(pos.sensitivity) } }, pos.sensitivity), ` · Moat: ${moatLabel(pos.moat)}`)
                 )
               ),
-              React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-                React.createElement("div", { style: { textAlign: "right" } },
-                  React.createElement("div", { className: "m", style: { fontSize: 12, fontWeight: 600 } }, `€${pos.cost.toLocaleString("de-DE", { maximumFractionDigits: 0 })}`),
+              React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                React.createElement("div", { style: { textAlign: "right", position: "relative" } },
+                  React.createElement("div", { className: "m", style: { fontSize: 12, fontWeight: 600 } }, pl ? `€${pl.currentValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `€${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+                  pl && React.createElement("div", { className: "m", style: { fontSize: 11, fontWeight: 600, color: pl.plPct >= 0 ? X.green : X.red } }, `${pl.plPct >= 0 ? "+" : ""}${pl.plPct.toFixed(1)}%`),
                   pr && React.createElement(BDG, { s: pr.sentiment })
                 ),
-                !DEFAULT_TICKERS.includes(pos.ticker) && React.createElement("button", { onClick: () => removeStock(pos.ticker), style: { background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 14, padding: 2 } }, "✕")
+                React.createElement("button", { onClick: () => setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", color: "#64748b", fontSize: 12 } }, "ⓘ"),
+                React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center" }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
+                React.createElement("button", { onClick: () => { if (confirm(`${pos.name} (${pos.ticker}) unwiderruflich aus dem Portfolio löschen?`)) removeStock(pos.ticker); }, style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center" }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
               )
+            ),
+            infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
+              React.createElement("div", null, `Investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+              pl && React.createElement("div", { style: { marginTop: 3 } }, `Ø Kaufpreis: €${pl.avgCost.toFixed(2)}`),
+              pl && React.createElement("div", { style: { marginTop: 3 } }, `Anteile: ${pl.totalShares.toFixed(2)}`),
+              pl && React.createElement("div", { style: { marginTop: 3, color: pl.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(pl.currentValue - pl.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+              pos.purchaseDate && React.createElement("div", { style: { marginTop: 3 } }, `Erstkauf: ${new Date(pos.purchaseDate).toLocaleDateString("de-DE")} (${holdingDuration(pos.purchaseDate)})`),
+              (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("div", { style: { marginTop: 6, padding: "6px 0", borderTop: "1px solid #334155", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
+                React.createElement("span", { style: { color: X.orange, fontWeight: 600 } }, "Fehlend:"),
+                !pos.pricePerShare && React.createElement("input", { value: editPPS, onChange: e => setEditPPS(e.target.value), type: "number", placeholder: "Kaufpreis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
+                !pos.purchaseDate && React.createElement("input", { value: editDate, onChange: e => setEditDate(e.target.value), type: "date", placeholder: "Kaufdatum", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
+                React.createElement("button", { onClick: () => { const upd = {}; if (editPPS) upd.pricePerShare = parseFloat(editPPS); if (editDate) upd.purchaseDate = editDate; if (Object.keys(upd).length > 0) { updateStock(pos.ticker, upd); setEditPPS(""); setEditDate(""); } }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "Speichern")
+              ),
+              pos.purchases?.length > 0 && React.createElement("div", { style: { marginTop: 5, borderTop: "1px solid #334155", paddingTop: 5 } },
+                React.createElement("div", { style: { fontWeight: 600, marginBottom: 3 } }, `${pos.purchases.length} Nachkäufe:`),
+                pos.purchases.map((p, i) => React.createElement("div", { key: i, style: { marginTop: 2 } }, `${new Date(p.date).toLocaleDateString("de-DE")}: €${p.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${p.pricePerShare?.toFixed(2) || "?"}`))
+              )
+            ),
+            nachkaufTicker === pos.ticker && React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, padding: "8px 0", borderTop: "1px solid #1e293b" } },
+              React.createElement("span", { style: { fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap" } }, "Nachkauf"),
+              React.createElement("input", { value: nachkaufBetrag, onChange: e => setNachkaufBetrag(e.target.value), type: "number", placeholder: "Betrag €", autoFocus: true, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
+              React.createElement("input", { value: nachkaufPPS, onChange: e => setNachkaufPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 110 } }),
+              React.createElement("input", { value: nachkaufDate, onChange: e => setNachkaufDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
+              React.createElement("button", { onClick: () => addNachkauf(pos.ticker, nachkaufBetrag, nachkaufPPS, nachkaufDate), style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+              React.createElement("button", { onClick: () => setNachkaufTicker(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 11 } }, "Abbrechen")
             ),
             pr && React.createElement("div", { style: { fontSize: 11, color: "#94a3b8", lineHeight: 1.6, marginTop: 9, paddingTop: 9, borderTop: "1px solid #1e293b" } }, pr.summary)
           );
@@ -800,25 +1479,50 @@ function App() {
           React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.cyan, marginBottom: 6, marginTop: 14, textTransform: "uppercase", letterSpacing: ".06em" } }, `Andere Positionen (${otherStocks.length})`),
           otherStocks.map(pos => {
             const pr = positions[pos.ticker];
-            return React.createElement("div", { key: pos.ticker, style: { background: "#111827", borderRadius: 12, border: `1px solid ${X.cyan}22`, padding: 13, marginBottom: 8 } },
+            const fhd = finnhubData[pos.ticker];
+            const pl = calcPL(pos, fhd?.price, eurUsdRate);
+            const incomplete = !pos.pricePerShare || !pos.purchaseDate;
+            return React.createElement("div", { key: pos.ticker, style: { background: "#111827", borderRadius: 12, border: incomplete ? `2px solid ${X.orange}` : `1px solid ${X.cyan}22`, padding: 13, marginBottom: 8 } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9 } },
                   React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: `${X.cyan}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.cyan } }, pos.ticker),
                   React.createElement("div", null,
                     React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
                       React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, pos.name),
-                      React.createElement(TypeBadge, { type: "other" })
+                      React.createElement(TypeBadge, { type: "other" }),
+                      (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — ⓘ klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
                     ),
                     React.createElement("div", { style: { fontSize: 10, color: "#64748b" } }, `${pos.sector} · Moat: ${moatLabel(pos.moat)}`)
                   )
                 ),
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-                  React.createElement("div", { style: { textAlign: "right" } },
-                    React.createElement("div", { className: "m", style: { fontSize: 12, fontWeight: 600 } }, `€${pos.cost.toLocaleString("de-DE", { maximumFractionDigits: 0 })}`),
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                  React.createElement("div", { style: { textAlign: "right", position: "relative" } },
+                    React.createElement("div", { className: "m", style: { fontSize: 12, fontWeight: 600 } }, pl ? `€${pl.currentValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `€${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+                    pl && React.createElement("div", { className: "m", style: { fontSize: 11, fontWeight: 600, color: pl.plPct >= 0 ? X.green : X.red } }, `${pl.plPct >= 0 ? "+" : ""}${pl.plPct.toFixed(1)}%`),
                     pr && React.createElement(BDG, { s: pr.sentiment })
                   ),
-                  React.createElement("button", { onClick: () => removeStock(pos.ticker), style: { background: "none", border: "none", color: "#475569", cursor: "pointer", fontSize: 14, padding: 2 } }, "✕")
+                  React.createElement("button", { onClick: () => setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", color: "#64748b", fontSize: 12 } }, "ⓘ"),
+                  React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center" }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
+                  React.createElement("button", { onClick: () => { if (confirm(`${pos.name} (${pos.ticker}) unwiderruflich aus dem Portfolio löschen?`)) removeStock(pos.ticker); }, style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center" }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
                 )
+              ),
+              infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
+                React.createElement("div", null, `Investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+                pl && React.createElement("div", { style: { marginTop: 3 } }, `Ø Kaufpreis: €${pl.avgCost.toFixed(2)}`),
+                pl && React.createElement("div", { style: { marginTop: 3 } }, `Anteile: ${pl.totalShares.toFixed(2)}`),
+                pl && React.createElement("div", { style: { marginTop: 3, color: pl.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(pl.currentValue - pl.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+                pos.purchaseDate && React.createElement("div", { style: { marginTop: 3 } }, `Erstkauf: ${new Date(pos.purchaseDate).toLocaleDateString("de-DE")} (${holdingDuration(pos.purchaseDate)})`),
+                pos.purchases?.length > 0 && React.createElement("div", { style: { marginTop: 5, borderTop: "1px solid #334155", paddingTop: 5 } },
+                  React.createElement("div", { style: { fontWeight: 600, marginBottom: 3 } }, `${pos.purchases.length} Nachkäufe:`),
+                  ...pos.purchases.map((p, i) => React.createElement("div", { key: i, style: { marginTop: 2 } }, `${new Date(p.date).toLocaleDateString("de-DE")}: €${p.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${p.pricePerShare?.toFixed(2) || "?"}`))
+                )
+              ),
+              nachkaufTicker === pos.ticker && React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, padding: "8px 0", borderTop: "1px solid #1e293b" } },
+                React.createElement("span", { style: { fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap" } }, "Nachkauf"),
+                React.createElement("input", { value: nachkaufBetrag, onChange: e => setNachkaufBetrag(e.target.value), type: "number", placeholder: "Betrag €", autoFocus: true, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
+                React.createElement("input", { value: nachkaufPPS, onChange: e => setNachkaufPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 110 } }),
+                React.createElement("button", { onClick: () => addNachkauf(pos.ticker, nachkaufBetrag, nachkaufPPS), style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+                React.createElement("button", { onClick: () => setNachkaufTicker(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 11 } }, "Abbrechen")
               ),
               pr && React.createElement("div", { style: { fontSize: 11, color: "#94a3b8", lineHeight: 1.6, marginTop: 9, paddingTop: 9, borderTop: "1px solid #1e293b" } }, pr.summary)
             );
@@ -882,6 +1586,16 @@ function App() {
               React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 6, fontSize: 10, color: "#64748b" } },
                 s.fromHigh && React.createElement("span", null, "Vom Hoch: ", React.createElement("span", { style: { color: col } }, s.fromHigh)),
                 s.momentum && React.createElement("span", null, "Momentum: ", React.createElement("span", { style: { color: s.momentum === "positiv" ? X.green : s.momentum === "negativ" ? X.red : X.yellow } }, s.momentum))
+              ),
+              finnhubData[s.ticker] && React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 } },
+                [
+                  ["Kurs", finnhubData[s.ticker].price != null ? `$${finnhubData[s.ticker].price}` : null],
+                  ["52W H", finnhubData[s.ticker].yearHigh != null ? `$${finnhubData[s.ticker].yearHigh}` : null],
+                  ["P/E", finnhubData[s.ticker].peRatio != null ? finnhubData[s.ticker].peRatio.toFixed(1) : null],
+                  ["PEG", finnhubData[s.ticker].pegRatio != null ? finnhubData[s.ticker].pegRatio.toFixed(2) : null],
+                ].filter(([, v]) => v !== null).map(([label, val]) =>
+                  React.createElement("span", { key: label, className: "m", style: { fontSize: 9, padding: "2px 6px", borderRadius: 6, background: "#1e293b", color: "#94a3b8" } }, `${label} ${val}`)
+                )
               )
             );
           })
@@ -935,23 +1649,30 @@ function App() {
 
         /* Sell Priority */
         React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13, marginTop: 8 } },
-          React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: X.purple, marginBottom: 8 } }, "Verkaufspriorität (CapEx-Positionen)"),
+          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
+            React.createElement("div", null,
+              React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: X.purple } }, "Verkaufspriorität"),
+              sellPrioLastRun && React.createElement("div", { style: { fontSize: 9, color: "#475569", marginTop: 2 } }, `Zuletzt: ${sellPrioLastRun.toLocaleDateString("de-DE")} ${sellPrioLastRun.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}`)
+            ),
+            React.createElement("button", { onClick: runSellPriority, disabled: busySellPrio, style: { background: busySellPrio ? "#1e293b" : `${X.indigo}22`, color: busySellPrio ? "#475569" : X.purple, border: "none", borderRadius: 8, padding: "5px 10px", fontSize: 10, fontWeight: 700, cursor: busySellPrio ? "default" : "pointer" } }, busySellPrio ? "⟳ Analysiere…" : "↻ Aktualisieren")
+          ),
+          sellPriority?.summary && React.createElement("div", { style: { fontSize: 11, color: "#94a3b8", marginBottom: 8, lineHeight: 1.6 } }, sellPriority.summary),
           React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "0 0 5px", borderBottom: "1px solid #1e293b44", marginBottom: 2 } },
-            React.createElement("span", { className: "m", style: { fontSize: 9, color: "#475569", width: 40 } }, "Prio"),
+            React.createElement("span", { className: "m", style: { fontSize: 9, color: "#475569", width: 22 } }, "#"),
             React.createElement("span", { className: "m", style: { fontSize: 9, color: "#475569", width: 34 } }, "Ticker"),
-            React.createElement("span", { style: { fontSize: 9, color: "#475569", flex: 1 } }, "Name"),
-            React.createElement("span", { style: { fontSize: 9, color: "#475569", width: 60, textAlign: "right" } }, "Sensitivität"),
+            React.createElement("span", { style: { fontSize: 9, color: "#475569", flex: 1 } }, sellPriority ? "Begründung" : "Name"),
             React.createElement("span", { style: { fontSize: 9, color: "#475569", width: 50, textAlign: "right" } }, "Moat")
           ),
-          bySell.map((p, i) =>
-            React.createElement("div", { key: p.ticker, style: { display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: i < bySell.length - 1 ? "1px solid #1e293b22" : "none" } },
-              React.createElement("span", { className: "m", style: { fontSize: 10, fontWeight: 700, color: i < 3 ? X.red : i < 5 ? X.yellow : X.green, width: 40 } }, i < 3 ? "Zuerst" : i < 5 ? "Dann" : "Zuletzt"),
+          bySell.map((p, i) => {
+            const third = Math.ceil(bySell.length / 3);
+            const prioColor = i < third ? X.red : i < third * 2 ? X.yellow : X.green;
+            return React.createElement("div", { key: p.ticker, style: { display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: i < bySell.length - 1 ? "1px solid #1e293b22" : "none" } },
+              React.createElement("span", { className: "m", style: { fontSize: 10, fontWeight: 700, color: prioColor, width: 22 } }, i + 1),
               React.createElement("span", { className: "m", style: { fontSize: 10, fontWeight: 700, color: X.purple, width: 34 } }, p.ticker),
-              React.createElement("span", { style: { fontSize: 11, color: "#94a3b8", flex: 1 } }, p.name),
-              React.createElement("span", { style: { fontSize: 10, color: sensColor(p.sensitivity), width: 60, textAlign: "right" } }, p.sensitivity),
+              React.createElement("span", { style: { fontSize: 10, color: "#94a3b8", flex: 1 } }, p.reason || p.name),
               React.createElement("span", { style: { fontSize: 10, color: p.moat === "wide" ? X.green : p.moat === "medium" ? X.yellow : X.red, width: 50, textAlign: "right" } }, moatLabel(p.moat))
-            )
-          )
+            );
+          })
         ),
 
         /* Other stocks note */
@@ -970,15 +1691,19 @@ function App() {
 
       /* ═══ CALENDAR ═══ */
       tab === "calendar" && React.createElement(React.Fragment, null,
-        React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 12 } }, "Kritische Earnings-Termine für die CapEx-Trajectory."),
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } },
+          React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", margin: 0 } }, earningsCal.length > 0 ? `${earningsCal.length} Earnings-Termine (nächste 120 Tage)` : "Lade Earnings-Kalender…"),
+          React.createElement("button", { onClick: () => { const k = getFmpKey(); const t = stocks.map(s => s.ticker); if (k && t.length > 0) fetchEarningsCalendar(k, t).then(cal => setEarningsCal(cal)); }, style: { background: `${X.indigo}22`, color: X.purple, border: "none", borderRadius: 8, padding: "5px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer" } }, "↻ Aktualisieren")
+        ),
         React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", overflow: "hidden" } },
-          CAL.map((ev, i) =>
-            React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", padding: "9px 12px", gap: 9, borderBottom: i < CAL.length - 1 ? "1px solid #1e293b22" : "none" } },
+          earningsCal.length > 0 ? earningsCal.map((ev, i) =>
+            React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", padding: "9px 12px", gap: 9, borderBottom: i < earningsCal.length - 1 ? "1px solid #1e293b22" : "none" } },
               React.createElement("span", { className: "m", style: { width: 50, fontSize: 11, fontWeight: 600, color: ev.c ? X.purple : "#64748b", flexShrink: 0 } }, ev.d),
               React.createElement("span", { style: { flex: 1, fontSize: 12, color: ev.c ? "#e2e8f0" : "#94a3b8" } }, ev.e),
+              ev.epsEstimate && React.createElement("span", { className: "m", style: { fontSize: 9, color: "#475569", flexShrink: 0 } }, `EPS est. ${ev.epsEstimate}`),
               ev.c && React.createElement("span", { style: { fontSize: 8, padding: "2px 6px", borderRadius: 10, background: `${X.indigo}22`, color: X.purple, fontWeight: 700 } }, "KRITISCH")
             )
-          )
+          ) : React.createElement("div", { style: { padding: 20, textAlign: "center", fontSize: 12, color: "#64748b" } }, getFmpKey() ? "Keine Termine gefunden" : "Finnhub API Key in Einstellungen hinterlegen")
         ),
         React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 14, marginTop: 10 } },
           React.createElement("div", { style: { fontSize: 13, fontWeight: 600, marginBottom: 8 } }, "Signalwörter in Earnings-Calls"),
