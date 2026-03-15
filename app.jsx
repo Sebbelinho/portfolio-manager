@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "15.03.2026, 23:07 Uhr";
+const BUILD_TIMESTAMP = "15.03.2026, 23:11 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -901,6 +901,43 @@ function Settings({ onClose }) {
           React.createElement("div", { style: { fontSize: 10, color: "#475569", marginBottom: 6 } }, "Leer = lokaler Proxy (nur PC). Für Handy/PWA: Cloudflare Worker URL eintragen."),
           React.createElement("input", { value: fredProxyState, onChange: e => setFredProxyState(e.target.value), placeholder: "https://dein-worker.dein-name.workers.dev", style: inp }),
           React.createElement("button", { onClick: () => { setFredProxy(fredProxyState); setFredResult({ ok: true, msg: "Proxy-URL gespeichert!" }); }, style: { ...btn(`${X.indigo}22`, X.purple), marginTop: 8 } }, "Proxy speichern")
+        )
+      ),
+      React.createElement("div", { style: { borderTop: "1px solid #1e293b", paddingTop: 16, marginBottom: 20 } },
+        React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 4 } }, "Portfolio Export / Import"),
+        React.createElement("div", { style: { fontSize: 10, color: "#475569", marginBottom: 10 } }, "Exportiert alle Aktien mit Käufen, Nachkäufen, Preisen und Metadaten als JSON-Datei."),
+        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
+          React.createElement("button", { onClick: () => {
+            const saved = loadData();
+            const exportData = { _version: 1, _exported: new Date().toISOString(), stocks: saved?.stocks || [] };
+            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a"); a.href = url; a.download = `portfolio_${new Date().toISOString().slice(0,10)}.json`; a.click();
+            URL.revokeObjectURL(url);
+          }, style: btn(`${X.green}22`, X.green) }, "Export (.json)"),
+          React.createElement("button", { onClick: () => {
+            const input = document.createElement("input"); input.type = "file"; input.accept = ".json";
+            input.onchange = (ev) => {
+              const file = ev.target.files[0]; if (!file) return;
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                try {
+                  const data = JSON.parse(e.target.result);
+                  const importStocks = data.stocks;
+                  if (!Array.isArray(importStocks) || importStocks.length === 0) { alert("Keine gültigen Aktien-Daten in der Datei gefunden."); return; }
+                  const valid = importStocks.every(s => s.ticker && s.name);
+                  if (!valid) { alert("Ungültiges Format: Jede Aktie braucht mindestens ticker und name."); return; }
+                  if (!confirm(`${importStocks.length} Aktien importieren?\n\n${importStocks.map(s => `${s.ticker} (${s.name})`).join("\n")}\n\nVorhandene Aktien werden überschrieben.`)) return;
+                  const saved = loadData() || {};
+                  saved.stocks = importStocks;
+                  localStorage.setItem(STORE_KEY, JSON.stringify(saved));
+                  location.reload();
+                } catch (err) { alert("Fehler beim Import: " + err.message); }
+              };
+              reader.readAsText(file);
+            };
+            input.click();
+          }, style: btn(`${X.cyan}22`, X.cyan) }, "Import (.json)")
         )
       ),
       React.createElement("div", { style: { borderTop: "1px solid #1e293b", paddingTop: 16 } },
