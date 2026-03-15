@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "15.03.2026, 22:18 Uhr";
+const BUILD_TIMESTAMP = "15.03.2026, 22:27 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -41,6 +41,15 @@ const FRED_KEY_KEY = "portfolio-monitor-fredkey";
 function getFredKey() { return localStorage.getItem(FRED_KEY_KEY) || ""; }
 function setFredKey(key) { localStorage.setItem(FRED_KEY_KEY, key); }
 
+const FRED_PROXY_KEY = "portfolio-monitor-fredproxy";
+function getFredProxy() { return localStorage.getItem(FRED_PROXY_KEY) || ""; }
+function setFredProxy(url) { localStorage.setItem(FRED_PROXY_KEY, url); }
+function fredProxyUrl() {
+  const custom = getFredProxy();
+  if (custom) return custom.replace(/\/+$/, "") + "/fred";
+  return "/fred-proxy";
+}
+
 async function fetchEurUsdRate() {
   // Primär: ECB-Referenzkurs (kostenlos, kein Key nötig)
   try {
@@ -63,7 +72,7 @@ const FRED_SERIES = {
 };
 
 async function fetchFredSeries(seriesId, fredKey, limit = 2) {
-  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${fredKey}&file_type=json&sort_order=desc&limit=${limit}`;
+  const url = `${fredProxyUrl()}?series_id=${seriesId}&api_key=${fredKey}&file_type=json&sort_order=desc&limit=${limit}`;
   const r = await fetch(url);
   if (!r.ok) throw new Error(`FRED ${seriesId}: ${r.status}`);
   const data = await r.json();
@@ -791,6 +800,7 @@ function Settings({ onClose }) {
   const [fmpResult, setFmpResult] = useState(null);
   const [fredKeyState, setFredKeyState] = useState(getFredKey());
   const [fredResult, setFredResult] = useState(null);
+  const [fredProxyState, setFredProxyState] = useState(getFredProxy());
 
   const saveKey = () => { setApiKey(key); setTestResult({ ok: true, msg: "Gespeichert!" }); };
   const saveFmpKey = () => { setFmpKey(fmpKey); setFmpResult({ ok: true, msg: "Gespeichert!" }); };
@@ -862,14 +872,20 @@ function Settings({ onClose }) {
           React.createElement("button", { onClick: async () => {
             setFredResult(null);
             try {
-              const r = await fetch(`https://api.stlouisfed.org/fred/series/observations?series_id=FEDFUNDS&api_key=${fredKeyState}&file_type=json&sort_order=desc&limit=1`);
+              const r = await fetch(`${fredProxyUrl()}?series_id=FEDFUNDS&api_key=${fredKeyState}&file_type=json&sort_order=desc&limit=1`);
               const d = await r.json();
               if (d?.observations?.[0]) { setFredKey(fredKeyState); setFredResult({ ok: true, msg: `OK — Fed Funds: ${d.observations[0].value}%` }); }
               else { setFredResult({ ok: false, msg: "Ungültiger API-Key oder keine Daten" }); }
             } catch (e) { setFredResult({ ok: false, msg: "Fehler: " + e.message }); }
           }, disabled: !fredKeyState, style: btn(fredKeyState ? `${X.cyan}22` : "#1e293b", fredKeyState ? X.cyan : "#475569") }, "Testen")
         ),
-        fredResult && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: fredResult.ok ? X.green : X.red, padding: "6px 10px", borderRadius: 8, background: fredResult.ok ? `${X.green}15` : `${X.red}15` } }, fredResult.msg)
+        fredResult && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: fredResult.ok ? X.green : X.red, padding: "6px 10px", borderRadius: 8, background: fredResult.ok ? `${X.green}15` : `${X.red}15` } }, fredResult.msg),
+        React.createElement("div", { style: { marginTop: 12 } },
+          React.createElement("label", { style: { fontSize: 11, color: "#64748b", marginBottom: 4, display: "block" } }, "FRED Proxy URL (Cloudflare Worker)"),
+          React.createElement("div", { style: { fontSize: 10, color: "#475569", marginBottom: 6 } }, "Leer = lokaler Proxy (nur PC). Für Handy/PWA: Cloudflare Worker URL eintragen."),
+          React.createElement("input", { value: fredProxyState, onChange: e => setFredProxyState(e.target.value), placeholder: "https://dein-worker.dein-name.workers.dev", style: inp }),
+          React.createElement("button", { onClick: () => { setFredProxy(fredProxyState); setFredResult({ ok: true, msg: "Proxy-URL gespeichert!" }); }, style: { ...btn(`${X.indigo}22`, X.purple), marginTop: 8 } }, "Proxy speichern")
+        )
       ),
       React.createElement("div", { style: { borderTop: "1px solid #1e293b", paddingTop: 16 } },
         React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, "Gefahrenzone"),
