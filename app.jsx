@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "15.03.2026, 00:53 Uhr";
+const BUILD_TIMESTAMP = "15.03.2026, 01:09 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -920,7 +920,7 @@ function App() {
     });
     setAddTicker(""); setAddName(""); setAddSector(""); setAddCost(""); setAddPricePerShare(""); setAddDate(new Date().toISOString().slice(0, 10)); setAddType("other"); setAddSens("low"); setAddMoat("medium");
     setShowAdd(false);
-  }, [addTicker, addName, addSector, addCost, addType, addSens, addMoat, stocks.length, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, lastRun, logs]);
+  }, [addTicker, addName, addSector, addCost, addPricePerShare, addDate, addType, addSens, addMoat, stocks.length, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, lastRun, logs]);
 
   const removeStock = useCallback((ticker) => {
     setStocks(prev => {
@@ -1423,26 +1423,26 @@ function App() {
           const incomplete = !pos.pricePerShare || !pos.purchaseDate;
           return React.createElement("div", { key: pos.ticker, style: { background: "#111827", borderRadius: 12, border: incomplete ? `2px solid ${X.orange}` : "1px solid #1e293b", padding: 13, marginBottom: 8 } },
             React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
-              React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9 } },
-                React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.purple } }, pos.ticker),
-                React.createElement("div", null,
+              React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9, minWidth: 0, flex: 1 } },
+                React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.purple, flexShrink: 0 } }, pos.ticker),
+                React.createElement("div", { style: { minWidth: 0 } },
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
-                    React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, pos.name),
+                    React.createElement("span", { style: { fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, pos.name),
                     React.createElement(TypeBadge, { type: "capex" }),
                     (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — ⓘ klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
                   ),
                   React.createElement("div", { style: { fontSize: 10, color: "#64748b" } }, `${pos.sector} · Sensitivität: `, React.createElement("span", { style: { color: sensColor(pos.sensitivity) } }, pos.sensitivity), ` · Moat: ${moatLabel(pos.moat)}`)
                 )
               ),
-              React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+              React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexShrink: 0 } },
                 React.createElement("div", { style: { textAlign: "right", position: "relative" } },
                   React.createElement("div", { className: "m", style: { fontSize: 12, fontWeight: 600 } }, pl ? `€${pl.currentValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `€${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
                   pl && React.createElement("div", { className: "m", style: { fontSize: 11, fontWeight: 600, color: pl.plPct >= 0 ? X.green : X.red } }, `${pl.plPct >= 0 ? "+" : ""}${pl.plPct.toFixed(1)}%`),
                   pr && React.createElement(BDG, { s: pr.sentiment })
                 ),
-                React.createElement("button", { onClick: () => setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", color: "#64748b", fontSize: 12 } }, "ⓘ"),
-                React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center" }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
-                React.createElement("button", { onClick: () => { if (confirm(`${pos.name} (${pos.ticker}) unwiderruflich aus dem Portfolio löschen?`)) removeStock(pos.ticker); }, style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center" }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
+                React.createElement("button", { onClick: () => setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", color: "#64748b", fontSize: 12, flexShrink: 0 } }, "ⓘ"),
+                React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
+                React.createElement("button", { onClick: () => { if (confirm(`${pos.name} (${pos.ticker}) unwiderruflich aus dem Portfolio löschen?`)) removeStock(pos.ticker); }, style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
               )
             ),
             infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
@@ -1484,26 +1484,26 @@ function App() {
             const incomplete = !pos.pricePerShare || !pos.purchaseDate;
             return React.createElement("div", { key: pos.ticker, style: { background: "#111827", borderRadius: 12, border: incomplete ? `2px solid ${X.orange}` : `1px solid ${X.cyan}22`, padding: 13, marginBottom: 8 } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9 } },
-                  React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: `${X.cyan}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.cyan } }, pos.ticker),
-                  React.createElement("div", null,
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9, minWidth: 0, flex: 1 } },
+                  React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: `${X.cyan}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.cyan, flexShrink: 0 } }, pos.ticker),
+                  React.createElement("div", { style: { minWidth: 0 } },
                     React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
-                      React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, pos.name),
+                      React.createElement("span", { style: { fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, pos.name),
                       React.createElement(TypeBadge, { type: "other" }),
                       (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — ⓘ klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
                     ),
                     React.createElement("div", { style: { fontSize: 10, color: "#64748b" } }, `${pos.sector} · Moat: ${moatLabel(pos.moat)}`)
                   )
                 ),
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexShrink: 0 } },
                   React.createElement("div", { style: { textAlign: "right", position: "relative" } },
                     React.createElement("div", { className: "m", style: { fontSize: 12, fontWeight: 600 } }, pl ? `€${pl.currentValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `€${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
                     pl && React.createElement("div", { className: "m", style: { fontSize: 11, fontWeight: 600, color: pl.plPct >= 0 ? X.green : X.red } }, `${pl.plPct >= 0 ? "+" : ""}${pl.plPct.toFixed(1)}%`),
                     pr && React.createElement(BDG, { s: pr.sentiment })
                   ),
-                  React.createElement("button", { onClick: () => setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", color: "#64748b", fontSize: 12 } }, "ⓘ"),
-                  React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center" }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
-                  React.createElement("button", { onClick: () => { if (confirm(`${pos.name} (${pos.ticker}) unwiderruflich aus dem Portfolio löschen?`)) removeStock(pos.ticker); }, style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center" }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
+                  React.createElement("button", { onClick: () => setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", color: "#64748b", fontSize: 12, flexShrink: 0 } }, "ⓘ"),
+                  React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
+                  React.createElement("button", { onClick: () => { if (confirm(`${pos.name} (${pos.ticker}) unwiderruflich aus dem Portfolio löschen?`)) removeStock(pos.ticker); }, style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
                 )
               ),
               infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
