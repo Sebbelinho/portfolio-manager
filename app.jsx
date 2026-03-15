@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "15.03.2026, 01:16 Uhr";
+const BUILD_TIMESTAMP = "15.03.2026, 22:12 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -37,6 +37,10 @@ const FINNHUB_KEY_KEY = "portfolio-monitor-finnhubkey";
 function getFmpKey() { return localStorage.getItem(FINNHUB_KEY_KEY) || ""; }
 function setFmpKey(key) { localStorage.setItem(FINNHUB_KEY_KEY, key); }
 
+const FRED_KEY_KEY = "portfolio-monitor-fredkey";
+function getFredKey() { return localStorage.getItem(FRED_KEY_KEY) || ""; }
+function setFredKey(key) { localStorage.setItem(FRED_KEY_KEY, key); }
+
 async function fetchEurUsdRate() {
   // Primär: ECB-Referenzkurs (kostenlos, kein Key nötig)
   try {
@@ -45,6 +49,109 @@ async function fetchEurUsdRate() {
     if (data?.rates?.EUR) return data.rates.EUR;
   } catch (e) { console.error("EUR/USD fetch error:", e); }
   return null;
+}
+
+/* ═══ FRED API (Macro-Daten) ═══ */
+const FRED_SERIES = {
+  fedFundsRate: "FEDFUNDS",
+  treasury2y: "DGS2",
+  treasury10y: "DGS10",
+  cpiYoy: "CPIAUCSL",
+  corePce: "PCEPILFE",
+  gdp: "GDP",
+  unemployment: "UNRATE",
+};
+
+async function fetchFredSeries(seriesId, fredKey, limit = 2) {
+  const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${fredKey}&file_type=json&sort_order=desc&limit=${limit}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`FRED ${seriesId}: ${r.status}`);
+  const data = await r.json();
+  return (data.observations || []).map(o => ({ date: o.date, value: o.value !== "." ? parseFloat(o.value) : null })).filter(o => o.value !== null);
+}
+
+async function fetchFredData() {
+  const fredKey = getFredKey();
+  if (!fredKey) return null;
+  const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  debugPush({ ts, label: "FRED Macro-Daten", status: "pending", fred: true, tokens: 0 });
+  const dbIdx = _debugLog.length - 1;
+  try {
+    const results = {};
+    const entries = Object.entries(FRED_SERIES);
+    // Fetch all series in parallel
+    const fetched = await Promise.all(entries.map(([key, sid]) => fetchFredSeries(sid, fredKey).then(obs => [key, obs]).catch(() => [key, []])));
+    for (const [key, obs] of fetched) {
+      if (obs.length > 0) {
+        results[key] = { current: obs[0].value, date: obs[0].date, previous: obs.length > 1 ? obs[1].value : null, previousDate: obs.length > 1 ? obs[1].date : null };
+      }
+    }
+    // Derived: Yield Spread
+    if (results.treasury10y && results.treasury2y) {
+      results.yieldSpread = { current: +(results.treasury10y.current - results.treasury2y.current).toFixed(2), status: (results.treasury10y.current - results.treasury2y.current) > 0.5 ? "normal" : (results.treasury10y.current - results.treasury2y.current) > 0 ? "flat" : "inverted" };
+    }
+    // CPI YoY: FRED gives index level, we compute YoY change from current vs 12 months ago
+    // For simplicity, we'll fetch 13 observations to compute YoY
+    if (fredKey) {
+      try {
+        const cpiObs = await fetchFredSeries("CPIAUCSL", fredKey, 13);
+        if (cpiObs.length >= 13) {
+          const cpiYoy = ((cpiObs[0].value - cpiObs[12].value) / cpiObs[12].value * 100);
+          results.cpiYoy = { ...results.cpiYoy, yoy: +cpiYoy.toFixed(1) };
+        }
+        const pceObs = await fetchFredSeries("PCEPILFE", fredKey, 13);
+        if (pceObs.length >= 13) {
+          const pceYoy = ((pceObs[0].value - pceObs[12].value) / pceObs[12].value * 100);
+          results.corePce = { ...results.corePce, yoy: +pceYoy.toFixed(1) };
+        }
+      } catch {}
+    }
+    const parts = [];
+    if (results.fedFundsRate) parts.push(`Fed ${results.fedFundsRate.current}%`);
+    if (results.yieldSpread) parts.push(`Spread ${results.yieldSpread.current}%`);
+    if (results.unemployment) parts.push(`Unemp ${results.unemployment.current}%`);
+    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: `FRED: ${parts.join(" | ")}` };
+    _debugListeners.forEach(fn => fn([..._debugLog]));
+    return results;
+  } catch (e) {
+    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: 0, detail: e.message };
+    _debugListeners.forEach(fn => fn([..._debugLog]));
+    return null;
+  }
+}
+
+/* ═══ VIX + Sektor-ETFs via Finnhub ═══ */
+const MARKET_TICKERS = { vix: "^VIX", xlk: "XLK", smh: "SMH", spy: "SPY" };
+
+async function fetchMarketIndicators() {
+  const token = getFmpKey();
+  if (!token) return null;
+  const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  debugPush({ ts, label: "VIX + Sektor-ETFs", status: "pending", fmp: true, tokens: 0 });
+  const dbIdx = _debugLog.length - 1;
+  try {
+    const results = {};
+    for (const [key, symbol] of Object.entries(MARKET_TICKERS)) {
+      try {
+        const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${token}`);
+        const q = await r.json();
+        if (q && q.c && q.c > 0) {
+          results[key] = { price: q.c, change: q.d, changePct: q.dp, prevClose: q.pc };
+        }
+      } catch {}
+    }
+    const parts = [];
+    if (results.vix) parts.push(`VIX ${results.vix.price}`);
+    if (results.xlk) parts.push(`XLK ${results.xlk.changePct > 0 ? "+" : ""}${results.xlk.changePct?.toFixed(1)}%`);
+    if (results.smh) parts.push(`SMH ${results.smh.changePct > 0 ? "+" : ""}${results.smh.changePct?.toFixed(1)}%`);
+    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: `Markt: ${parts.join(" | ")}` };
+    _debugListeners.forEach(fn => fn([..._debugLog]));
+    return results;
+  } catch (e) {
+    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: 0, detail: e.message };
+    _debugListeners.forEach(fn => fn([..._debugLog]));
+    return null;
+  }
 }
 
 async function fetchStockData(tickers) {
@@ -360,7 +467,7 @@ async function doMultiSearch(query, keys) {
   }
 }
 
-async function doAnalyze(allData, stockList, fmpData, insiderDataMap) {
+async function doAnalyze(allData, stockList, fmpData, insiderDataMap, macroData, marketData) {
   const capexTickers = stockList.filter(s => s.type === "capex").map(s => s.ticker).join(", ");
   const otherInfo = stockList.filter(s => s.type === "other").map(s => `${s.ticker} (${s.sector})`).join(", ");
   const compact = {};
@@ -408,17 +515,42 @@ async function doAnalyze(allData, stockList, fmpData, insiderDataMap) {
   stockList.forEach(s => { sectorCounts[s.sector] = (sectorCounts[s.sector] || 0) + 1; });
   const concBlock = `\n\nPortfolio-Konzentration: ${Object.entries(sectorCounts).map(([s, c]) => `${s}: ${c}/${stockList.length}`).join(", ")}`;
 
+  // Macro-Kontext (FRED + VIX + Sektor)
+  let macroBlock = "";
+  if (macroData) {
+    const parts = [];
+    if (macroData.fedFundsRate) parts.push(`Fed Funds Rate: ${macroData.fedFundsRate.current}%`);
+    if (macroData.treasury2y) parts.push(`Treasury 2Y: ${macroData.treasury2y.current}%`);
+    if (macroData.treasury10y) parts.push(`Treasury 10Y: ${macroData.treasury10y.current}%`);
+    if (macroData.yieldSpread) parts.push(`Yield Spread (10Y-2Y): ${macroData.yieldSpread.current}% (${macroData.yieldSpread.status})`);
+    if (macroData.cpiYoy?.yoy != null) parts.push(`CPI YoY: ${macroData.cpiYoy.yoy}%`);
+    if (macroData.corePce?.yoy != null) parts.push(`Core PCE YoY: ${macroData.corePce.yoy}%`);
+    if (macroData.gdp) parts.push(`GDP: ${macroData.gdp.current}`);
+    if (macroData.unemployment) parts.push(`Arbeitslosenquote: ${macroData.unemployment.current}%`);
+    macroBlock = `\n\nMakroökonomische Daten (FRED, exakte Zahlen):\n${parts.join("\n")}`;
+  }
+  let marketBlock = "";
+  if (marketData) {
+    const parts = [];
+    if (marketData.vix) parts.push(`VIX: ${marketData.vix.price} (${marketData.vix.changePct > 0 ? "+" : ""}${marketData.vix.changePct?.toFixed(1)}%)`);
+    if (marketData.xlk) parts.push(`XLK (Tech-ETF): $${marketData.xlk.price} (${marketData.xlk.changePct > 0 ? "+" : ""}${marketData.xlk.changePct?.toFixed(1)}%)`);
+    if (marketData.smh) parts.push(`SMH (Halbleiter-ETF): $${marketData.smh.price} (${marketData.smh.changePct > 0 ? "+" : ""}${marketData.smh.changePct?.toFixed(1)}%)`);
+    if (marketData.spy) parts.push(`SPY (S&P 500): $${marketData.spy.price} (${marketData.spy.changePct > 0 ? "+" : ""}${marketData.spy.changePct?.toFixed(1)}%)`);
+    marketBlock = `\n\nMarktindikatoren (Finnhub, exakte Daten):\n${parts.join("\n")}`;
+  }
+
   try {
     const raw = await callAPI(
       `Portfolio: CapEx-Aktien: ${capexTickers}${otherInfo ? ". Andere: " + otherInfo : ""}
-Daten: ${JSON.stringify(compact)}${fmpBlock}${insiderBlock}${concBlock}
+Daten: ${JSON.stringify(compact)}${fmpBlock}${insiderBlock}${concBlock}${macroBlock}${marketBlock}
 
 Antworte NUR mit validem JSON. Kein Markdown, keine Backticks, kein Text davor oder danach:
-{"overallStatus":"green","explanation":"1-2 Sätze deutsch","capexTrend":"accelerating","alerts":[{"name":"CapEx-Wende","status":"green","detail":"deutsch"},{"name":"TSMC-Trend","status":"green","detail":"deutsch"},{"name":"DRAM-Preise","status":"green","detail":"deutsch"},{"name":"Bewertungsrisiko","status":"yellow","detail":"deutsch"},{"name":"Insider-Aktivität","status":"green","detail":"deutsch"},{"name":"NVIDIA-Guidance","status":"green","detail":"deutsch"}],"risks":["deutsch1","deutsch2","deutsch3"],"action":"deutsch","nextEvent":"deutsch"}
+{"overallStatus":"green","explanation":"1-2 Sätze deutsch","capexTrend":"accelerating","alerts":[{"name":"CapEx-Wende","status":"green","detail":"deutsch"},{"name":"TSMC-Trend","status":"green","detail":"deutsch"},{"name":"DRAM-Preise","status":"green","detail":"deutsch"},{"name":"Bewertungsrisiko","status":"yellow","detail":"deutsch"},{"name":"Insider-Aktivität","status":"green","detail":"deutsch"},{"name":"NVIDIA-Guidance","status":"green","detail":"deutsch"},{"name":"Zinsumfeld","status":"green","detail":"deutsch"},{"name":"Marktbreite","status":"green","detail":"deutsch"}],"risks":["deutsch1","deutsch2","deutsch3"],"action":"deutsch","nextEvent":"deutsch"}
 
 overallStatus: green=klar, yellow=1-2 Warnungen, orange=3+, red=bestätigte Kürzungen.
-capexTrend: accelerating/stable/decelerating/contracting. Immer 6 alerts. Alles deutsch.
-Nutze die Fundamentaldaten für Bewertungsrisiko (P/E, PEG vs. Portfolio-Durchschnitt). Nutze Insider-Daten für Insider-Alert. Berücksichtige Klumpenrisiko bei der Risikoeinschätzung.`,
+capexTrend: accelerating/stable/decelerating/contracting. Immer 8 alerts. Alles deutsch.
+Nutze die Fundamentaldaten für Bewertungsrisiko (P/E, PEG vs. Portfolio-Durchschnitt). Nutze Insider-Daten für Insider-Alert. Berücksichtige Klumpenrisiko bei der Risikoeinschätzung.
+Nutze die Makro-Daten für Zinsumfeld-Alert: grün=stabile/fallende Zinsen, gelb=hawkish Signale, rot=aktives Tightening. Nutze VIX + Sektor-ETFs für Marktbreite-Alert: grün=niedrige Vola + Tech stark, gelb=erhöhte Vola, rot=VIX>30 oder Tech deutlich schwächer als S&P.`,
       "Du bist ein Portfolio-Stratege. Antworte NUR mit validem JSON. Kein Markdown. Keine Backticks. Kein Text.",
       false,
       2000
@@ -438,7 +570,7 @@ Nutze die Fundamentaldaten für Bewertungsrisiko (P/E, PEG vs. Portfolio-Durchsc
   }
 }
 
-async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap) {
+async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap, macroData, marketData) {
   const stockInfo = stockList.map(s => `${s.ticker} (${s.name}, Sektor: ${s.sector}, Kaufpreis: €${s.cost.toFixed(2)})`).join("; ");
 
   let fmpBlock = "";
@@ -461,11 +593,30 @@ async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap) {
     insiderBlock = `\n\nInsider-Transaktionen:\n${insLines.join("\n")}`;
   }
 
+  // Macro context for timing
+  let macroTimingBlock = "";
+  if (macroData || marketData) {
+    const parts = [];
+    if (macroData?.fedFundsRate) parts.push(`Fed Funds Rate: ${macroData.fedFundsRate.current}%`);
+    if (macroData?.yieldSpread) parts.push(`Yield Spread: ${macroData.yieldSpread.current}% (${macroData.yieldSpread.status})`);
+    if (macroData?.cpiYoy?.yoy != null) parts.push(`CPI YoY: ${macroData.cpiYoy.yoy}%`);
+    if (marketData?.vix) parts.push(`VIX: ${marketData.vix.price}`);
+    if (marketData?.xlk && marketData?.spy) {
+      const relPerf = (marketData.xlk.changePct - marketData.spy.changePct).toFixed(1);
+      parts.push(`Tech vs S&P: ${relPerf > 0 ? "+" : ""}${relPerf}%`);
+    }
+    if (marketData?.smh && marketData?.spy) {
+      const relPerf = (marketData.smh.changePct - marketData.spy.changePct).toFixed(1);
+      parts.push(`Semis vs S&P: ${relPerf > 0 ? "+" : ""}${relPerf}%`);
+    }
+    macroTimingBlock = `\n\nMakro-Kontext (exakte Daten, als Fakten verwenden):\n${parts.join("\n")}`;
+  }
+
   try {
     const raw = await callAPI(
       `Du analysierst Kurs-Timing für ein Portfolio. Aktien: ${stockInfo}
 
-Aktuelle Kursdaten: ${JSON.stringify(priceData)}${fmpBlock}${insiderBlock}
+Aktuelle Kursdaten: ${JSON.stringify(priceData)}${fmpBlock}${insiderBlock}${macroTimingBlock}
 
 Für JEDE Aktie: Bewerte ob der aktuelle Kurs eine Nachkaufgelegenheit, Halteposition, oder Gewinnmitnahme-Kandidat ist.
 
@@ -474,6 +625,7 @@ Antworte NUR mit validem JSON:
 
 WICHTIG: Übernimm fromHigh exakt aus den Marktdaten oben. Nicht selbst schätzen.
 Berücksichtige Insider-Verkäufe als Warnsignal (viele Verkäufe = vorsichtiger bei Nachkauf-Empfehlung).
+Berücksichtige den Makro-Kontext: VIX>30 = Angst = tendenziell gute Kaufgelegenheit. Invertierte Yield Curve = Rezessionsrisiko = vorsichtiger. Tech schwächer als S&P = Sektor-Rotation = Warnsignal.
 opportunityScore: 1-10 (1=alles teuer, 10=alles im Ausverkauf). Alle Texte deutsch.`,
       "Du bist ein technischer Analyst und Timing-Experte. NUR valides JSON. Kein Markdown. Keine Backticks.",
       false,
@@ -637,6 +789,8 @@ function Settings({ onClose }) {
   const [testing, setTesting] = useState(false);
   const [fmpKey, setFmpKeyState] = useState(getFmpKey());
   const [fmpResult, setFmpResult] = useState(null);
+  const [fredKeyState, setFredKeyState] = useState(getFredKey());
+  const [fredResult, setFredResult] = useState(null);
 
   const saveKey = () => { setApiKey(key); setTestResult({ ok: true, msg: "Gespeichert!" }); };
   const saveFmpKey = () => { setFmpKey(fmpKey); setFmpResult({ ok: true, msg: "Gespeichert!" }); };
@@ -699,6 +853,24 @@ function Settings({ onClose }) {
         ),
         fmpResult && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: fmpResult.ok ? X.green : X.red, padding: "6px 10px", borderRadius: 8, background: fmpResult.ok ? `${X.green}15` : `${X.red}15` } }, fmpResult.msg)
       ),
+      React.createElement("div", { style: { marginBottom: 20, borderTop: "1px solid #1e293b", paddingTop: 16 } },
+        React.createElement("label", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 6, display: "block" } }, "FRED API Key (Makro-Daten)"),
+        React.createElement("div", { style: { fontSize: 10, color: "#475569", marginBottom: 8 } }, "Kostenlos auf fred.stlouisfed.org — Zinsen, Yield Curve, CPI, GDP, Arbeitsmarkt"),
+        React.createElement("input", { type: "password", value: fredKeyState, onChange: e => setFredKeyState(e.target.value), placeholder: "FRED API Key…", style: inp }),
+        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 } },
+          React.createElement("button", { onClick: () => { setFredKey(fredKeyState); setFredResult({ ok: true, msg: "Gespeichert!" }); }, style: btn(X.indigo, "#fff") }, "Speichern"),
+          React.createElement("button", { onClick: async () => {
+            setFredResult(null);
+            try {
+              const r = await fetch(`https://api.stlouisfed.org/fred/series/observations?series_id=FEDFUNDS&api_key=${fredKeyState}&file_type=json&sort_order=desc&limit=1`);
+              const d = await r.json();
+              if (d?.observations?.[0]) { setFredKey(fredKeyState); setFredResult({ ok: true, msg: `OK — Fed Funds: ${d.observations[0].value}%` }); }
+              else { setFredResult({ ok: false, msg: "Ungültiger API-Key oder keine Daten" }); }
+            } catch (e) { setFredResult({ ok: false, msg: "Fehler: " + e.message }); }
+          }, disabled: !fredKeyState, style: btn(fredKeyState ? `${X.cyan}22` : "#1e293b", fredKeyState ? X.cyan : "#475569") }, "Testen")
+        ),
+        fredResult && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: fredResult.ok ? X.green : X.red, padding: "6px 10px", borderRadius: 8, background: fredResult.ok ? `${X.green}15` : `${X.red}15` } }, fredResult.msg)
+      ),
       React.createElement("div", { style: { borderTop: "1px solid #1e293b", paddingTop: 16 } },
         React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, "Gefahrenzone"),
         React.createElement("button", { onClick: resetData, style: btn(`${X.orange}22`, X.orange) }, "Daten zurücksetzen")
@@ -733,6 +905,7 @@ function DebugPanel({ active }) {
         ),
         entry.search && React.createElement("span", { style: { fontSize: 8, padding: "1px 4px", borderRadius: 4, background: `${X.cyan}22`, color: X.cyan, flexShrink: 0 } }, "WEB"),
         entry.fmp && React.createElement("span", { style: { fontSize: 8, padding: "1px 4px", borderRadius: 4, background: `${X.green}22`, color: X.green, flexShrink: 0 } }, "FH"),
+        entry.fred && React.createElement("span", { style: { fontSize: 8, padding: "1px 4px", borderRadius: 4, background: `${X.orange}22`, color: X.orange, flexShrink: 0 } }, "FRED"),
         React.createElement("span", { className: "m", style: { fontSize: 9, color: "#475569", flexShrink: 0 } }, entry.code || "…")
       )
     ),
@@ -815,6 +988,8 @@ function App() {
   const cancelRef = useRef(false);
   const [timingStep, setTimingStep] = useState("");
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [macro, setMacro] = useState(null);
+  const [marketIndicators, setMarketIndicators] = useState(null);
 
   useEffect(() => {
     const saved = loadData();
@@ -834,6 +1009,8 @@ function App() {
       if (saved.sellPrioLastRun) setSellPrioLastRun(new Date(saved.sellPrioLastRun));
       if (saved.lastRun) setLastRun(new Date(saved.lastRun));
       if (saved.logs) setLogs(saved.logs);
+      if (saved.macro) setMacro(saved.macro);
+      if (saved.marketIndicators) setMarketIndicators(saved.marketIndicators);
     }
     setDataLoaded(true);
     // Earnings-Kalender + EUR/USD-Kurs laden
@@ -900,9 +1077,9 @@ function App() {
   }, []);
 
   const persistAll = useCallback((overrides = {}) => {
-    const payload = { stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun: lastRun?.toISOString(), logs, ...overrides };
+    const payload = { stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun: lastRun?.toISOString(), logs, macro, marketIndicators, ...overrides };
     saveData(payload);
-  }, [stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun, logs]);
+  }, [stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun, logs, macro, marketIndicators]);
 
   const addStock = useCallback(() => {
     if (!addTicker.trim() || !addName.trim()) return;
@@ -967,14 +1144,17 @@ function App() {
     setBusy(true); setPct(0); debugClear();
     setCapex([]); setTsmc(null); setDram(null); setNvidia(null);
     setPositions({}); setInsider(null); setAnalysis(null); setTiming(null); setLogs([]);
+    setMacro(null); setMarketIndicators(null);
     addLog("Recherche gestartet…");
 
     const check = () => { if (cancelRef.current) { addLog("⛔ Abgebrochen."); setBusy(false); return true; } return false; };
     let lCapex = [], lTsmc = null, lDram = null, lNvidia = null, lPos = {}, lInsider = null;
+    let lMacro = null, lMarket = null;
     let step = 0;
-    // Total: 1 Finnhub + 2 capex + 2 indicators + N positions + 1 analysis + 1 timing
+    // Total: 1 Finnhub + 1 Macro + 2 capex + 2 indicators + N positions + 1 analysis + 1 timing
     const hasFmp = !!getFmpKey();
-    const total = (hasFmp ? 1 : 0) + 2 + 2 + stocks.length + 1 + 1;
+    const hasFred = !!getFredKey();
+    const total = (hasFmp ? 1 : 0) + (hasFred || hasFmp ? 1 : 0) + 2 + 2 + stocks.length + 1 + 1;
 
     const advance = (label) => { step++; setStepName(label); setPct(Math.round((step / total) * 100)); };
 
@@ -1001,6 +1181,26 @@ function App() {
       }
       const insiderSells = Object.entries(lInsiderData).filter(([, d]) => d.totalSells > 0);
       if (insiderSells.length > 0) addLog(`  ⚠ Insider-Verkäufe: ${insiderSells.map(([t, d]) => `${t}(${d.totalSells})`).join(", ")}`);
+    }
+
+    // Phase 0.5: Macro-Daten (FRED + VIX/ETFs)
+    if (hasFred || hasFmp) {
+      if (check()) return;
+      advance("Makro-Daten (FRED + VIX)");
+      addLog("→ Makro-Daten laden…");
+      const [fredResult, marketResult] = await Promise.all([
+        hasFred ? fetchFredData() : Promise.resolve(null),
+        hasFmp ? fetchMarketIndicators() : Promise.resolve(null),
+      ]);
+      lMacro = fredResult;
+      lMarket = marketResult;
+      if (lMacro) setMacro(lMacro);
+      if (lMarket) setMarketIndicators(lMarket);
+      const parts = [];
+      if (lMacro?.fedFundsRate) parts.push(`Fed ${lMacro.fedFundsRate.current}%`);
+      if (lMacro?.yieldSpread) parts.push(`Yield ${lMacro.yieldSpread.status}`);
+      if (lMarket?.vix) parts.push(`VIX ${lMarket.vix.price}`);
+      addLog(`  ✓ Makro: ${parts.length > 0 ? parts.join(", ") : "keine Daten"}`);
     }
 
     // Phase 1: CapEx — 2 calls instead of 4
@@ -1067,7 +1267,7 @@ function App() {
       : lInsider;
     setInsider(lInsider);
     const allData = { capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider };
-    const ana = await doAnalyze(allData, stocks, fmpData, lInsiderData);
+    const ana = await doAnalyze(allData, stocks, fmpData, lInsiderData, lMacro, lMarket);
     setAnalysis(ana);
     addLog("✓ Status: " + (ana?.overallStatus || "?"));
 
@@ -1080,7 +1280,7 @@ function App() {
     for (const [ticker, data] of Object.entries(lPos)) {
       priceData[ticker] = { sentiment: data.sentiment, summary: (data.summary || "").slice(0, 200) };
     }
-    const tim = await doTimingAnalysis(priceData, stocks, fmpData, lInsiderData);
+    const tim = await doTimingAnalysis(priceData, stocks, fmpData, lInsiderData, lMacro, lMarket);
     setTiming(tim);
     addLog("✓ Timing: Score " + (tim?.opportunityScore || "?") + "/10");
 
@@ -1089,7 +1289,7 @@ function App() {
     debugSaveToServer(stocks, fmpData, eurUsdRate);
 
     setLogs(prevLogs => {
-      saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, lastRun: now.toISOString(), logs: prevLogs });
+      saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, lastRun: now.toISOString(), logs: prevLogs });
       return prevLogs;
     });
   }, [addLog, stocks]);
@@ -1099,19 +1299,26 @@ function App() {
     setBusyTiming(true); debugClear();
     setTimingStep("Kursdaten…");
 
-    // Finnhub-Daten laden falls Key vorhanden
+    // Macro + Finnhub-Daten laden
     let fmpData = {};
     let lInsiderData = {};
+    let lMacro = null, lMarket = null;
     if (getFmpKey()) {
-      setTimingStep("Fundamentaldaten + Insider (Finnhub)…");
-      const [stockDataResult, insiderResult] = await Promise.all([
+      setTimingStep("Fundamentaldaten + Insider + Makro…");
+      const [stockDataResult, insiderResult, fredResult, marketResult] = await Promise.all([
         fetchStockData(stocks.map(s => s.ticker)),
         fetchInsiderData(stocks.map(s => s.ticker)),
+        getFredKey() ? fetchFredData() : Promise.resolve(null),
+        fetchMarketIndicators(),
       ]);
       fmpData = stockDataResult;
       lInsiderData = insiderResult;
+      lMacro = fredResult;
+      lMarket = marketResult;
       setFinnhubData(fmpData);
       setInsiderData(lInsiderData);
+      if (lMacro) setMacro(lMacro);
+      if (lMarket) setMarketIndicators(lMarket);
     }
 
     const priceResults = {};
@@ -1124,14 +1331,14 @@ function App() {
     }
     await delay(API_DELAY);
     setTimingStep("Timing-Bewertung…");
-    const tim = await doTimingAnalysis(priceResults, stocks, fmpData, lInsiderData);
+    const tim = await doTimingAnalysis(priceResults, stocks, fmpData, lInsiderData, lMacro, lMarket);
     setTiming(tim);
     setBusyTiming(false);
     setTimingStep("");
     debugSaveToServer(stocks, fmpData, eurUsdRate);
     try {
       const existing = loadData();
-      const merged = { ...(existing || {}), timing: tim, finnhubData: fmpData, insiderData: lInsiderData, stocks };
+      const merged = { ...(existing || {}), timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, stocks };
       saveData(merged);
     } catch {}
   }, [stocks]);
@@ -1179,9 +1386,11 @@ function App() {
     { name: "Bewertungs-Stretch", status: "yellow", detail: null },
     { name: "Insider-Selling", status: "yellow", detail: null },
     { name: "NVIDIA-Guidance", status: "green", detail: null },
+    { name: "Zinsumfeld", status: "green", detail: null },
+    { name: "Marktbreite", status: "green", detail: null },
   ];
 
-  const TABS = [["overview", "Überblick"], ["capex", "CapEx"], ["positions", "Positionen"], ["timing", "Timing"], ["alerts", "Alerts"], ["playbook", "Playbook"], ["calendar", "Kalender"]];
+  const TABS = [["overview", "Überblick"], ["capex", "CapEx"], ["macro", "Makro"], ["positions", "Positionen"], ["timing", "Timing"], ["alerts", "Alerts"], ["playbook", "Playbook"], ["calendar", "Kalender"]];
   const badgeColor = st ? X[st] : "#64748b";
   const badgeText = busy ? "Recherche…" : (hasData ? stMap[st] : "Bereit");
 
@@ -1287,6 +1496,27 @@ function App() {
             )
           )
         ),
+        /* Macro Context Strip on Overview */
+        (macro || marketIndicators) && React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 12 } },
+          macro?.fedFundsRate && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: "1px solid #1e293b", padding: "8px 10px", textAlign: "center" } },
+            React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Fed Rate"),
+            React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.fedFundsRate.current}%`),
+            macro.fedFundsRate.previous != null && React.createElement("div", { style: { fontSize: 9, color: macro.fedFundsRate.current > macro.fedFundsRate.previous ? X.orange : macro.fedFundsRate.current < macro.fedFundsRate.previous ? X.green : "#475569" } }, macro.fedFundsRate.current > macro.fedFundsRate.previous ? "▲ Steigend" : macro.fedFundsRate.current < macro.fedFundsRate.previous ? "▼ Fallend" : "▶ Stabil")
+          ),
+          marketIndicators?.vix && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${marketIndicators.vix.price > 30 ? X.red + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
+            React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "VIX"),
+            React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: marketIndicators.vix.price > 30 ? X.red : marketIndicators.vix.price > 20 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, marketIndicators.vix.price.toFixed(1))
+          ),
+          macro?.yieldSpread && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${macro.yieldSpread.status === "inverted" ? X.red + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
+            React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Yield Curve"),
+            React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: macro.yieldSpread.status === "inverted" ? X.red : macro.yieldSpread.status === "flat" ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, macro.yieldSpread.status === "inverted" ? "Invertiert" : macro.yieldSpread.status === "flat" ? "Flach" : "Normal")
+          ),
+          marketIndicators?.xlk && marketIndicators?.spy && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: "1px solid #1e293b", padding: "8px 10px", textAlign: "center" } },
+            React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Tech-Trend"),
+            React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: (marketIndicators.xlk.changePct - marketIndicators.spy.changePct) >= 0 ? X.green : X.red, fontFamily: "'JetBrains Mono', monospace" } }, `${(marketIndicators.xlk.changePct - marketIndicators.spy.changePct) >= 0 ? "+" : ""}${(marketIndicators.xlk.changePct - marketIndicators.spy.changePct).toFixed(1)}%`)
+          )
+        ),
+
         hasData && React.createElement(React.Fragment, null,
           React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X[analysis.overallStatus]}33`, padding: 15, marginBottom: 10 } },
             React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: X[analysis.overallStatus], marginBottom: 8 } }, "AI-Gesamtanalyse"),
@@ -1326,6 +1556,98 @@ function App() {
         React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: X.purple, margin: "14px 0 8px" } }, "Leitindikatoren"),
         tsmc && React.createElement(RCard, { t: "TSMC Monatsumsätze", d: tsmc }),
         dram && React.createElement(RCard, { t: "DRAM Spotpreise", d: dram })
+      ),
+
+      /* ═══ MAKRO ═══ */
+      tab === "macro" && React.createElement(React.Fragment, null,
+        React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 12, lineHeight: 1.6 } }, "Makroökonomisches Umfeld — FRED API (deterministische Daten) + VIX/Sektor (Finnhub)."),
+        macro ? React.createElement(React.Fragment, null,
+          /* Zinsen & Yield Curve */
+          React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.purple, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" } }, "Zinsen & Yield Curve"),
+          React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 } },
+            macro.fedFundsRate && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Fed Funds Rate"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.fedFundsRate.current}%`),
+              macro.fedFundsRate.previous != null && React.createElement("div", { style: { fontSize: 10, color: macro.fedFundsRate.current > macro.fedFundsRate.previous ? X.red : macro.fedFundsRate.current < macro.fedFundsRate.previous ? X.green : "#64748b", marginTop: 2 } }, `Vorher: ${macro.fedFundsRate.previous}%`)
+            ),
+            macro.yieldSpread && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${macro.yieldSpread.status === "inverted" ? X.red + "44" : macro.yieldSpread.status === "flat" ? X.yellow + "44" : "#1e293b"}`, padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Yield Spread (10Y-2Y)"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: macro.yieldSpread.status === "inverted" ? X.red : macro.yieldSpread.status === "flat" ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, `${macro.yieldSpread.current}%`),
+              React.createElement("div", { style: { fontSize: 10, color: macro.yieldSpread.status === "inverted" ? X.red : macro.yieldSpread.status === "flat" ? X.yellow : X.green, marginTop: 2 } }, macro.yieldSpread.status === "inverted" ? "⚠ Invertiert — Rezessionsrisiko" : macro.yieldSpread.status === "flat" ? "◈ Flach — Beobachten" : "✓ Normal")
+            ),
+            macro.treasury2y && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Treasury 2Y"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.treasury2y.current}%`)
+            ),
+            macro.treasury10y && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Treasury 10Y"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.treasury10y.current}%`)
+            )
+          ),
+
+          /* Inflation */
+          React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.orange, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" } }, "Inflation"),
+          React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 } },
+            macro.cpiYoy && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "CPI (Verbraucherpreise)"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: (macro.cpiYoy.yoy || 0) > 3 ? X.red : (macro.cpiYoy.yoy || 0) > 2.5 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, macro.cpiYoy.yoy != null ? `${macro.cpiYoy.yoy}% YoY` : `${macro.cpiYoy.current}`),
+              React.createElement("div", { style: { fontSize: 10, color: "#64748b", marginTop: 2 } }, `Stand: ${macro.cpiYoy.date}`)
+            ),
+            macro.corePce && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Core PCE (Fed-Maß)"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: (macro.corePce.yoy || 0) > 3 ? X.red : (macro.corePce.yoy || 0) > 2.5 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, macro.corePce.yoy != null ? `${macro.corePce.yoy}% YoY` : `${macro.corePce.current}`),
+              React.createElement("div", { style: { fontSize: 10, color: "#64748b", marginTop: 2 } }, `Stand: ${macro.corePce.date}`)
+            )
+          ),
+
+          /* Wirtschaft */
+          React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.cyan, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" } }, "Wirtschaft"),
+          React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 } },
+            macro.gdp && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "GDP (Mrd. $)"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${(macro.gdp.current / 1000).toFixed(1)}T`),
+              macro.gdp.previous && React.createElement("div", { style: { fontSize: 10, color: macro.gdp.current > macro.gdp.previous ? X.green : X.red, marginTop: 2 } }, `${macro.gdp.current > macro.gdp.previous ? "▲" : "▼"} Vorher: ${(macro.gdp.previous / 1000).toFixed(1)}T`)
+            ),
+            macro.unemployment && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Arbeitslosenquote"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: macro.unemployment.current > 5 ? X.red : macro.unemployment.current > 4 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, `${macro.unemployment.current}%`),
+              macro.unemployment.previous != null && React.createElement("div", { style: { fontSize: 10, color: macro.unemployment.current > macro.unemployment.previous ? X.red : X.green, marginTop: 2 } }, `Vorher: ${macro.unemployment.previous}%`)
+            )
+          )
+        ) : React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 28, textAlign: "center" } },
+          React.createElement("div", { style: { fontSize: 28, marginBottom: 10 } }, "📊"),
+          React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 5 } }, getFredKey() ? "Recherche starten für Makro-Daten" : "FRED API Key benötigt"),
+          React.createElement("div", { style: { fontSize: 12, color: "#64748b", lineHeight: 1.6 } }, getFredKey() ? "Starte die Live-Recherche, um Zinsen, Yield Curve, Inflation und Arbeitsmarkt zu laden." : "Kostenlos auf fred.stlouisfed.org — in den Einstellungen hinterlegen.")
+        ),
+
+        /* VIX + Sektor-ETFs */
+        marketIndicators && React.createElement(React.Fragment, null,
+          React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.indigo, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" } }, "Marktindikatoren (Finnhub)"),
+          React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 } },
+            marketIndicators.vix && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${marketIndicators.vix.price > 30 ? X.red + "44" : marketIndicators.vix.price > 20 ? X.yellow + "44" : "#1e293b"}`, padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "VIX (Volatilität)"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: marketIndicators.vix.price > 30 ? X.red : marketIndicators.vix.price > 20 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, marketIndicators.vix.price.toFixed(1)),
+              React.createElement("div", { style: { fontSize: 10, color: marketIndicators.vix.price > 30 ? X.green : marketIndicators.vix.price < 15 ? X.orange : "#64748b", marginTop: 2 } }, marketIndicators.vix.price > 30 ? "Angst — tendenziell Kaufgelegenheit" : marketIndicators.vix.price < 15 ? "Sorglosigkeit — Vorsicht" : "Normales Niveau")
+            ),
+            marketIndicators.spy && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "S&P 500 (SPY)"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `$${marketIndicators.spy.price}`),
+              React.createElement("div", { style: { fontSize: 10, color: marketIndicators.spy.changePct >= 0 ? X.green : X.red, marginTop: 2 } }, `${marketIndicators.spy.changePct >= 0 ? "+" : ""}${marketIndicators.spy.changePct?.toFixed(2)}%`)
+            ),
+            marketIndicators.xlk && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Tech-Sektor (XLK)"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `$${marketIndicators.xlk.price}`),
+              React.createElement("div", { style: { fontSize: 10, color: marketIndicators.xlk.changePct >= 0 ? X.green : X.red, marginTop: 2 } }, `${marketIndicators.xlk.changePct >= 0 ? "+" : ""}${marketIndicators.xlk.changePct?.toFixed(2)}%`),
+              marketIndicators.spy && React.createElement("div", { style: { fontSize: 9, color: (marketIndicators.xlk.changePct - marketIndicators.spy.changePct) >= 0 ? X.green : X.orange, marginTop: 2 } }, `vs S&P: ${(marketIndicators.xlk.changePct - marketIndicators.spy.changePct) >= 0 ? "+" : ""}${(marketIndicators.xlk.changePct - marketIndicators.spy.changePct).toFixed(2)}%`)
+            ),
+            marketIndicators.smh && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Halbleiter (SMH)"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `$${marketIndicators.smh.price}`),
+              React.createElement("div", { style: { fontSize: 10, color: marketIndicators.smh.changePct >= 0 ? X.green : X.red, marginTop: 2 } }, `${marketIndicators.smh.changePct >= 0 ? "+" : ""}${marketIndicators.smh.changePct?.toFixed(2)}%`),
+              marketIndicators.spy && React.createElement("div", { style: { fontSize: 9, color: (marketIndicators.smh.changePct - marketIndicators.spy.changePct) >= 0 ? X.green : X.orange, marginTop: 2 } }, `vs S&P: ${(marketIndicators.smh.changePct - marketIndicators.spy.changePct) >= 0 ? "+" : ""}${(marketIndicators.smh.changePct - marketIndicators.spy.changePct).toFixed(2)}%`)
+            )
+          )
+        )
       ),
 
       /* ═══ POSITIONS ═══ */
@@ -1545,6 +1867,26 @@ function App() {
         } }, busyTiming ? `⟳ ${timingStep}` : "⚡  Timing aktualisieren"),
 
         timing ? React.createElement(React.Fragment, null,
+          /* Macro Context Strip */
+          (marketIndicators || macro) && React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 12 } },
+            marketIndicators?.vix && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${marketIndicators.vix.price > 30 ? X.red + "33" : marketIndicators.vix.price > 20 ? X.yellow + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
+              React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "VIX"),
+              React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: marketIndicators.vix.price > 30 ? X.red : marketIndicators.vix.price > 20 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, marketIndicators.vix.price.toFixed(1))
+            ),
+            macro?.yieldSpread && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${macro.yieldSpread.status === "inverted" ? X.red + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
+              React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Yield"),
+              React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: macro.yieldSpread.status === "inverted" ? X.red : macro.yieldSpread.status === "flat" ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, `${macro.yieldSpread.current}%`)
+            ),
+            marketIndicators?.xlk && marketIndicators?.spy && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: "1px solid #1e293b", padding: "8px 10px", textAlign: "center" } },
+              React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Tech vs S&P"),
+              React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: (marketIndicators.xlk.changePct - marketIndicators.spy.changePct) >= 0 ? X.green : X.red, fontFamily: "'JetBrains Mono', monospace" } }, `${(marketIndicators.xlk.changePct - marketIndicators.spy.changePct) >= 0 ? "+" : ""}${(marketIndicators.xlk.changePct - marketIndicators.spy.changePct).toFixed(1)}%`)
+            ),
+            macro?.fedFundsRate && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: "1px solid #1e293b", padding: "8px 10px", textAlign: "center" } },
+              React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Fed Rate"),
+              React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.fedFundsRate.current}%`)
+            )
+          ),
+
           /* Opportunity Score */
           React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${(timing.opportunityScore >= 7 ? X.green : timing.opportunityScore >= 4 ? X.yellow : X.red) + "33"}`, padding: 15, marginBottom: 10 } },
             React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
