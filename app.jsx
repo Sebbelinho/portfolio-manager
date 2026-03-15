@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 00:47 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 00:51 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -834,7 +834,7 @@ Erstelle einen konkreten, monatlichen DCA-Plan. Berücksichtige:
 ${extraBudget > 0 ? "8. Verteile das Sonder-Budget gezielt auf die 1-3 attraktivsten Nachkauf-Gelegenheiten" : ""}
 
 Antworte NUR mit validem JSON:
-{"summary":"2-3 Sätze Gesamtstrategie deutsch","monthlyTotal":${monthlyBudget},"months":${months},"plan":[{"ticker":"XXX","name":"Name","monthlyAmount":100,"percentage":10,"reason":"1 Satz deutsch","priority":"hoch|mittel|niedrig"}]${extraBudget > 0 ? ',"extraAllocations":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch"}]' : ""},"warnings":["Warnung1 deutsch"],"rebalanceHints":["Hinweis1 deutsch"]}
+{"summary":"2-3 Sätze Gesamtstrategie deutsch","monthlyTotal":${monthlyBudget},"months":${months},"plan":[{"ticker":"XXX","name":"Name","monthlyAmount":100,"percentage":10,"reason":"1 Satz deutsch","detail":"3-5 Sätze ausführliche Begründung deutsch: Bewertung, Timing, Gewichtung, Risiko, Makro-Einfluss","priority":"hoch|mittel|niedrig"}]${extraBudget > 0 ? ',"extraAllocations":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze ausführliche Begründung deutsch"}]' : ""},"warnings":["Warnung1 deutsch"],"rebalanceHints":["Hinweis1 deutsch"]}
 
 monthlyAmount = Euro-Betrag pro Monat. percentage = Anteil am Monatsbudget. Die Summe aller monthlyAmount MUSS exakt €${monthlyBudget} ergeben.
 Alle Texte auf Deutsch.`,
@@ -845,10 +845,10 @@ Alle Texte auf Deutsch.`,
     const j = extractJSON(raw);
     if (j && j.plan) {
       if (j.summary) j.summary = cleanText(j.summary);
-      j.plan = j.plan.map(p => ({ ...p, reason: cleanText(p.reason) }));
+      j.plan = j.plan.map(p => ({ ...p, reason: cleanText(p.reason), detail: p.detail ? cleanText(p.detail) : null }));
       if (j.warnings) j.warnings = j.warnings.map(cleanText);
       if (j.rebalanceHints) j.rebalanceHints = j.rebalanceHints.map(cleanText);
-      if (j.extraAllocations) j.extraAllocations = j.extraAllocations.map(a => ({ ...a, reason: cleanText(a.reason) }));
+      if (j.extraAllocations) j.extraAllocations = j.extraAllocations.map(a => ({ ...a, reason: cleanText(a.reason), detail: a.detail ? cleanText(a.detail) : null }));
       return j;
     }
     return null;
@@ -1186,6 +1186,7 @@ function App() {
   const [dcaBudget, setDcaBudget] = useState("");
   const [dcaMonths, setDcaMonths] = useState("12");
   const [dcaExtra, setDcaExtra] = useState("");
+  const [dcaDetail, setDcaDetail] = useState(null);
 
   useEffect(() => {
     const saved = loadData();
@@ -2337,6 +2338,7 @@ function App() {
             ),
             dcaPlan.plan.map((p, i) => {
               const prioCol = p.priority === "hoch" ? X.green : p.priority === "mittel" ? X.yellow : "#64748b";
+              const expanded = dcaDetail === `plan-${i}`;
               return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < dcaPlan.plan.length - 1 ? "1px solid #1e293b22" : "none" } },
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 } },
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
@@ -2344,12 +2346,16 @@ function App() {
                     React.createElement("span", { style: { fontSize: 10, color: "#64748b" } }, p.name),
                     React.createElement("span", { style: { fontSize: 8, padding: "2px 6px", borderRadius: 8, background: `${prioCol}22`, color: prioCol, fontWeight: 700 } }, p.priority?.toUpperCase())
                   ),
-                  React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.green } }, `€${p.monthlyAmount?.toFixed(2)}`)
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                    React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.green } }, `€${p.monthlyAmount?.toFixed(2)}`),
+                    p.detail && React.createElement("button", { onClick: () => setDcaDetail(expanded ? null : `plan-${i}`), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 6, color: expanded ? X.purple : "#64748b", fontSize: 11, flexShrink: 0 } }, "ⓘ")
+                  )
                 ),
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
                   React.createElement("span", { style: { fontSize: 10, color: "#94a3b8", flex: 1 } }, p.reason),
                   React.createElement("span", { className: "m", style: { fontSize: 10, color: "#475569", flexShrink: 0, marginLeft: 8 } }, `${p.percentage}%`)
-                )
+                ),
+                expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, p.detail)
               );
             })
           ),
@@ -2359,15 +2365,20 @@ function App() {
             React.createElement("div", { style: { padding: "10px 15px", borderBottom: "1px solid #1e293b" } },
               React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.purple } }, "Sonder-Nachkäufe (einmalig)")
             ),
-            dcaPlan.extraAllocations.map((a, i) =>
-              React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < dcaPlan.extraAllocations.length - 1 ? "1px solid #1e293b22" : "none" } },
+            dcaPlan.extraAllocations.map((a, i) => {
+              const expanded = dcaDetail === `extra-${i}`;
+              return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < dcaPlan.extraAllocations.length - 1 ? "1px solid #1e293b22" : "none" } },
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
                   React.createElement("span", { style: { fontSize: 12, fontWeight: 600 } }, a.ticker),
-                  React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.purple } }, `€${a.amount?.toFixed(2)}`)
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                    React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.purple } }, `€${a.amount?.toFixed(2)}`),
+                    a.detail && React.createElement("button", { onClick: () => setDcaDetail(expanded ? null : `extra-${i}`), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 6, color: expanded ? X.purple : "#64748b", fontSize: 11, flexShrink: 0 } }, "ⓘ")
+                  )
                 ),
-                React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, a.reason)
-              )
-            )
+                React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, a.reason),
+                expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, a.detail)
+              );
+            })
           ),
 
           /* Warnings */
