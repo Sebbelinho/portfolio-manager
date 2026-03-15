@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "15.03.2026, 23:00 Uhr";
+const BUILD_TIMESTAMP = "15.03.2026, 23:07 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -301,37 +301,34 @@ async function fetchEarningsCalendar(token, portfolioTickers) {
   const today = new Date();
   const from = today.toISOString().slice(0, 10);
   const to = new Date(today.getTime() + 120 * 86400000).toISOString().slice(0, 10);
-  const calendarTickers = new Set([...portfolioTickers, ...HYPERSCALER_TICKERS]);
-  const criticalTickers = new Set([...portfolioTickers, ...HYPERSCALER_TICKERS]);
+  const allTickers = [...new Set([...portfolioTickers, ...HYPERSCALER_TICKERS])];
+  const criticalTickers = new Set(allTickers);
   const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  debugPush({ ts, label: `Earnings-Kalender (${from} → ${to})`, status: "pending", fmp: true, tokens: 0 });
+  debugPush({ ts, label: `Earnings-Kalender: ${allTickers.length} Ticker (${from} → ${to})`, status: "pending", fmp: true, tokens: 0 });
   const dbIdx = _debugLog.length - 1;
   try {
-    const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${token}`);
-    const data = await r.json();
-    if (!data?.earningsCalendar) {
-      _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: r.status, detail: "Keine earningsCalendar in Antwort" };
-      _debugListeners.forEach(fn => fn([..._debugLog]));
-      return [];
-    }
-    const total = data.earningsCalendar.length;
-    const filtered = data.earningsCalendar
-      .filter(e => calendarTickers.has(e.symbol))
-      .map(e => {
-        const d = new Date(e.date);
-        const day = String(d.getDate()).padStart(2, "0");
-        const months = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
-        return {
-          d: `${day}. ${months[d.getMonth()]}`,
-          e: `${e.symbol} Q${e.quarter} FY${e.year} Earnings`,
-          c: criticalTickers.has(e.symbol),
-          date: e.date,
-          epsEstimate: e.epsEstimate,
-          revenueEstimate: e.revenueEstimate,
-        };
-      })
-      .sort((a, b) => a.date.localeCompare(b.date));
-    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: `Earnings: ${filtered.length} Treffer (von ${total} gesamt, Suche: ${[...calendarTickers].join(",")})` };
+    const results = await Promise.all(allTickers.map(async (sym) => {
+      try {
+        const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?symbol=${sym}&from=${from}&to=${to}&token=${token}`);
+        const data = await r.json();
+        return (data?.earningsCalendar || []).map(e => ({ ...e, _sym: sym }));
+      } catch { return []; }
+    }));
+    const all = results.flat();
+    const filtered = all.map(e => {
+      const d = new Date(e.date);
+      const day = String(d.getDate()).padStart(2, "0");
+      const months = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+      return {
+        d: `${day}. ${months[d.getMonth()]}`,
+        e: `${e.symbol} Q${e.quarter} FY${e.year} Earnings`,
+        c: criticalTickers.has(e.symbol),
+        date: e.date,
+        epsEstimate: e.epsEstimate,
+        revenueEstimate: e.revenueEstimate,
+      };
+    }).sort((a, b) => a.date.localeCompare(b.date));
+    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: `Earnings: ${filtered.length} Termine gefunden (${allTickers.length} Ticker abgefragt)` };
     _debugListeners.forEach(fn => fn([..._debugLog]));
     return filtered;
   } catch (e) {
@@ -377,7 +374,7 @@ function cleanText(s) {
 let _debugListeners = [];
 let _debugLog = [];
 function debugPush(entry) {
-  _debugLog.push(entry);
+  _debugLog.push({ ...entry, _t: Date.now() });
   _debugListeners.forEach(fn => fn([..._debugLog]));
 }
 function debugClear() { _debugLog = []; _debugListeners.forEach(fn => fn([])); }
@@ -922,7 +919,15 @@ function DebugPanel({ active }) {
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [log.length]);
   const hasErrors = log.some(l => l.status === "error");
   const hasPending = log.some(l => l.status === "pending");
-  if (log.length === 0 || (!active && !hasErrors && !hasPending)) return null;
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    if (!active && !hasErrors && !hasPending && log.length > 0) {
+      const timer = setTimeout(() => forceUpdate(n => n + 1), 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [log.length, active, hasErrors, hasPending]);
+  const hasRecent = log.length > 0 && (Date.now() - (log[log.length - 1]._t || 0)) < 10000;
+  if (log.length === 0 || (!active && !hasErrors && !hasPending && !hasRecent)) return null;
   const statCol = { ok: X.green, error: X.red, pending: X.yellow };
   const statLabel = { ok: "✓", error: "✕", pending: "⟳" };
   return React.createElement("div", { style: { background: "#0d1117", border: "1px solid #1e293b", borderRadius: 10, padding: 12, marginTop: 10, maxHeight: 220, overflowY: "auto" } },
