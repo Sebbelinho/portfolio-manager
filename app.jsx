@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "15.03.2026, 22:12 Uhr";
+const BUILD_TIMESTAMP = "15.03.2026, 22:18 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -1045,6 +1045,20 @@ function App() {
   const [showDashInfo, setShowDashInfo] = useState(false);
   const [editPPS, setEditPPS] = useState("");
   const [editDate, setEditDate] = useState("");
+  const [keyWarning, setKeyWarning] = useState(null);
+
+  const checkKeys = useCallback(() => {
+    const missing = [];
+    if (!getApiKey()) missing.push("Anthropic API Key");
+    if (!getFmpKey()) missing.push("Finnhub API Key");
+    if (!getFredKey()) missing.push("FRED API Key");
+    if (missing.length > 0) {
+      setKeyWarning(missing);
+      return false;
+    }
+    setKeyWarning(null);
+    return true;
+  }, []);
 
   const canAutofill = addTicker.trim().length > 0 || addName.trim().length > 0;
 
@@ -1433,7 +1447,7 @@ function App() {
       ),
 
       /* ── BUTTON ── */
-      React.createElement("button", { onClick: busy ? cancelResearch : run, style: {
+      React.createElement("button", { onClick: busy ? cancelResearch : () => { if (checkKeys()) run(); }, style: {
         width: "100%", padding: 11, marginTop: 10, marginBottom: 4, borderRadius: 10, border: "none",
         cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit",
         background: busy ? `linear-gradient(135deg,${X.red},${X.orange})` : `linear-gradient(135deg,${X.indigo},#8b5cf6)`,
@@ -1448,6 +1462,19 @@ function App() {
         React.createElement("div", { style: { height: 4, background: "#1e293b", borderRadius: 2, overflow: "hidden" } },
           React.createElement("div", { style: { height: "100%", width: `${pct}%`, borderRadius: 2, background: `linear-gradient(90deg,${X.indigo},${X.purple})`, transition: "width .4s" } })
         )
+      ),
+
+      /* ── KEY WARNING ── */
+      keyWarning && React.createElement("div", { style: { background: `${X.orange}12`, border: `1px solid ${X.orange}44`, borderRadius: 10, padding: "10px 14px", marginTop: 6, marginBottom: 6 } },
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 } },
+          React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: X.orange } }, "Fehlende API-Keys"),
+          React.createElement("button", { onClick: () => setKeyWarning(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1 } }, "✕")
+        ),
+        keyWarning.map((k, i) => React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#e2e8f0", marginBottom: 3 } },
+          React.createElement("span", { style: { color: X.red } }, "✕"),
+          k
+        )),
+        React.createElement("button", { onClick: () => { setKeyWarning(null); setShowSettings(true); }, style: { marginTop: 8, width: "100%", padding: 8, borderRadius: 8, border: "none", cursor: "pointer", background: `${X.orange}22`, color: X.orange, fontSize: 11, fontWeight: 700, fontFamily: "inherit" } }, "Einstellungen öffnen")
       ),
 
       /* ── DEBUG PANEL (bleibt sichtbar bei Fehlern) ── */
@@ -1858,7 +1885,7 @@ function App() {
       /* ═══ TIMING ═══ */
       tab === "timing" && React.createElement(React.Fragment, null,
         React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, "Kurs-Timing: Nachkaufen bei Korrekturen, Gewinne mitnehmen bei Überhitzung."),
-        React.createElement("button", { onClick: runTiming, disabled: busyTiming || busy, style: {
+        React.createElement("button", { onClick: () => { if (checkKeys()) runTiming(); }, disabled: busyTiming || busy, style: {
           width: "100%", padding: 10, marginBottom: 12, borderRadius: 10, border: "none",
           cursor: (busyTiming || busy) ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit",
           background: (busyTiming || busy) ? "#1e293b" : `linear-gradient(135deg,${X.cyan}cc,${X.indigo})`,
