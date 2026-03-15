@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 00:01 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 00:47 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -747,6 +747,114 @@ rank: 1 = zuerst verkaufen, höchste Zahl = zuletzt verkaufen. ALLE Aktien müss
   } catch { return null; }
 }
 
+async function doDCAPlan(stockList, totalBudget, months, extraBudget, fmpData, insiderDataMap, timingData, analysisData, macroData, marketData, eurUsdRate) {
+  const stockInfo = stockList.map(s => {
+    let info = `${s.ticker} (${s.name}, Sektor: ${s.sector}, Typ: ${s.type === "capex" ? "AI-Infrastruktur" : "Andere"}, Sensitivität: ${s.sensitivity}, Moat: ${s.moat}, Investiert: €${s.cost.toFixed(2)}`;
+    if (s.purchaseDate) {
+      const mo = Math.round((Date.now() - new Date(s.purchaseDate).getTime()) / (30.44 * 86400000));
+      info += `, Haltedauer: ${mo}M`;
+    }
+    if (s.pricePerShare && fmpData[s.ticker]?.price && eurUsdRate) {
+      const curEur = fmpData[s.ticker].price * eurUsdRate;
+      const plPct = ((curEur - s.pricePerShare) / s.pricePerShare * 100).toFixed(1);
+      info += `, Ø Kaufpreis: €${s.pricePerShare.toFixed(2)}, Aktuell: €${curEur.toFixed(2)}, P/L: ${plPct}%`;
+    }
+    if (s.purchases?.length > 0) info += `, ${s.purchases.length} Nachkäufe (Σ €${s.purchases.reduce((a, p) => a + p.amount, 0).toFixed(2)})`;
+    return info + ")";
+  }).join("\n");
+
+  let fmpBlock = "";
+  if (fmpData && Object.keys(fmpData).length > 0) {
+    const lines = Object.entries(fmpData).map(([t, d]) => {
+      let line = `${t}: Kurs=$${d.price}, 52wH=$${d.yearHigh ?? "n/a"}, AbstandVomHoch=${d.fromHigh ?? "n/a"}%, ` +
+        `P/E=${d.peRatio ?? "n/a"}, PEG=${d.pegRatio ?? "n/a"}, Marge=${d.netProfitMargin != null ? (d.netProfitMargin * 100).toFixed(1) + "%" : "n/a"}`;
+      if (d.consensusLabel) line += `, Konsens=${d.consensusLabel}`;
+      if (d.beatCount != null) line += `, Earnings ${d.beatCount}/4 beats`;
+      return line;
+    });
+    fmpBlock = `\n\nMarktdaten:\n${lines.join("\n")}`;
+  }
+
+  let insiderBlock = "";
+  if (insiderDataMap && Object.keys(insiderDataMap).length > 0) {
+    const insLines = Object.entries(insiderDataMap).map(([t, d]) =>
+      `${t}: ${d.totalSells} Verkäufe ($${(d.sellVolume/1e6).toFixed(1)}M), ${d.totalBuys} Käufe`
+    );
+    insiderBlock = `\n\nInsider-Transaktionen (90 Tage):\n${insLines.join("\n")}`;
+  }
+
+  let macroBlock = "";
+  if (macroData) {
+    const parts = [];
+    if (macroData.fedFundsRate) parts.push(`Fed Funds Rate: ${macroData.fedFundsRate.value}%`);
+    if (macroData.yieldSpread != null) parts.push(`Yield Spread (10Y-2Y): ${macroData.yieldSpread.toFixed(2)}%`);
+    if (macroData.cpiYoy) parts.push(`CPI YoY: ${macroData.cpiYoy.value}%`);
+    if (macroData.unemployment) parts.push(`Arbeitslosigkeit: ${macroData.unemployment.value}%`);
+    if (parts.length > 0) macroBlock = `\n\nMakro-Kontext:\n${parts.join("\n")}`;
+  }
+
+  let timingBlock = "";
+  if (timingData?.stocks) {
+    const lines = timingData.stocks.map(s => `${s.ticker}: Signal=${s.signal}, ${s.reason}`);
+    timingBlock = `\n\nTiming-Signale:\n${lines.join("\n")}`;
+    if (timingData.opportunityScore) timingBlock += `\nOpportunity Score: ${timingData.opportunityScore}/10`;
+  }
+
+  let analysisBlock = "";
+  if (analysisData) {
+    analysisBlock = `\n\nAnalyse-Status: ${analysisData.overallStatus || "n/a"}, CapEx-Trend: ${analysisData.capexTrend || "n/a"}`;
+  }
+
+  const totalInvested = stockList.reduce((s, st) => s + st.cost, 0);
+  const monthlyBudget = (totalBudget / months).toFixed(2);
+
+  try {
+    const raw = await callAPI(
+      `Du erstellst einen Dollar-Cost-Averaging (DCA) Plan für ein Portfolio.
+
+BUDGET & ZEITRAUM:
+- Gesamtbudget: €${totalBudget.toFixed(2)}
+- Zeitraum: ${months} Monate
+- Monatliches Budget: €${monthlyBudget}
+${extraBudget > 0 ? `- Zusätzliches Sonder-Nachkauf-Budget: €${extraBudget.toFixed(2)} (einmalig, für besonders attraktive Gelegenheiten)` : ""}
+- Bereits investiert (gesamt): €${totalInvested.toFixed(2)}
+
+PORTFOLIO:
+${stockInfo}${fmpBlock}${insiderBlock}${macroBlock}${timingBlock}${analysisBlock}
+
+AUFGABE:
+Erstelle einen konkreten, monatlichen DCA-Plan. Berücksichtige:
+1. Aktuelle Bewertung (P/E, PEG, Abstand vom Hoch) — unterbewertete Aktien stärker gewichten
+2. Bisherige Investmenthöhe — untergewichtete Positionen aufbauen, übergewichtete reduzieren
+3. Timing-Signale (strong_buy/buy → mehr, hold → normal, take_profit/sell → weniger/pausieren)
+4. Moat & Sensitivität — breiter Moat + niedrige Sensitivität = höherer Basisanteil
+5. Insider-Aktivität — viele Insider-Käufe = positiv, viele Verkäufe = vorsichtiger
+6. Makro-Umfeld — Zinsumfeld und Marktlage einbeziehen
+7. Sektor-Diversifikation — Klumpenrisiko vermeiden
+${extraBudget > 0 ? "8. Verteile das Sonder-Budget gezielt auf die 1-3 attraktivsten Nachkauf-Gelegenheiten" : ""}
+
+Antworte NUR mit validem JSON:
+{"summary":"2-3 Sätze Gesamtstrategie deutsch","monthlyTotal":${monthlyBudget},"months":${months},"plan":[{"ticker":"XXX","name":"Name","monthlyAmount":100,"percentage":10,"reason":"1 Satz deutsch","priority":"hoch|mittel|niedrig"}]${extraBudget > 0 ? ',"extraAllocations":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch"}]' : ""},"warnings":["Warnung1 deutsch"],"rebalanceHints":["Hinweis1 deutsch"]}
+
+monthlyAmount = Euro-Betrag pro Monat. percentage = Anteil am Monatsbudget. Die Summe aller monthlyAmount MUSS exakt €${monthlyBudget} ergeben.
+Alle Texte auf Deutsch.`,
+      "Du bist ein erfahrener Portfolio-Manager und professioneller Aktienhändler mit über 20 Jahren Erfahrung im institutionellen Asset Management. Du spezialisierst dich auf systematische DCA-Strategien für Growth- und Technologie-Portfolios. Deine Empfehlungen sind datengetrieben, präzise und berücksichtigen sowohl Fundamental- als auch Makro-Faktoren. NUR valides JSON. Kein Markdown. Keine Backticks.",
+      false,
+      3000
+    );
+    const j = extractJSON(raw);
+    if (j && j.plan) {
+      if (j.summary) j.summary = cleanText(j.summary);
+      j.plan = j.plan.map(p => ({ ...p, reason: cleanText(p.reason) }));
+      if (j.warnings) j.warnings = j.warnings.map(cleanText);
+      if (j.rebalanceHints) j.rebalanceHints = j.rebalanceHints.map(cleanText);
+      if (j.extraAllocations) j.extraAllocations = j.extraAllocations.map(a => ({ ...a, reason: cleanText(a.reason) }));
+      return j;
+    }
+    return null;
+  } catch { return null; }
+}
+
 /* ═══ COLORS ═══ */
 const X = { green: "#22c55e", yellow: "#eab308", orange: "#f97316", red: "#ef4444", purple: "#a78bfa", indigo: "#6366f1", cyan: "#22d3ee" };
 
@@ -1073,6 +1181,11 @@ function App() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const [macro, setMacro] = useState(null);
   const [marketIndicators, setMarketIndicators] = useState(null);
+  const [dcaPlan, setDcaPlan] = useState(null);
+  const [busyDca, setBusyDca] = useState(false);
+  const [dcaBudget, setDcaBudget] = useState("");
+  const [dcaMonths, setDcaMonths] = useState("12");
+  const [dcaExtra, setDcaExtra] = useState("");
 
   useEffect(() => {
     const saved = loadData();
@@ -1521,7 +1634,7 @@ function App() {
     { name: "Marktbreite", status: "green", detail: null },
   ];
 
-  const TABS = [["overview", "Überblick"], ["capex", "CapEx"], ["macro", "Makro"], ["positions", "Positionen"], ["timing", "Timing"], ["alerts", "Alerts"], ["playbook", "Playbook"], ["calendar", "Kalender"]];
+  const TABS = [["overview", "Überblick"], ["capex", "CapEx"], ["macro", "Makro"], ["positions", "Positionen"], ["timing", "Timing"], ["dca", "DCA"], ["alerts", "Alerts"], ["playbook", "Playbook"], ["calendar", "Kalender"]];
   const badgeColor = st ? X[st] : "#64748b";
   const badgeText = busy ? "Recherche…" : (hasData ? stMap[st] : "Bereit");
 
@@ -2168,6 +2281,116 @@ function App() {
           React.createElement("div", { style: { fontSize: 28, marginBottom: 10 } }, "⚡"),
           React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 5 } }, "Starte die Live-Recherche"),
           React.createElement("div", { style: { fontSize: 12, color: "#64748b" } }, "Claude analysiert aktuelle Kurse und bewertet Timing-Chancen für jede Position.")
+        )
+      ),
+
+      /* ═══ DCA ═══ */
+      tab === "dca" && React.createElement(React.Fragment, null,
+        React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 15, marginBottom: 12 } },
+          React.createElement("div", { style: { fontSize: 13, fontWeight: 600, marginBottom: 10 } }, "DCA-Plan erstellen"),
+          React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 } },
+            React.createElement("div", null,
+              React.createElement("label", { style: { fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 } }, "Gesamt-Budget (€)"),
+              React.createElement("input", { value: dcaBudget, onChange: e => setDcaBudget(e.target.value), type: "number", placeholder: "z.B. 12000", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: "100%" } })
+            ),
+            React.createElement("div", null,
+              React.createElement("label", { style: { fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 } }, "Zeitraum (Monate)"),
+              React.createElement("input", { value: dcaMonths, onChange: e => setDcaMonths(e.target.value), type: "number", placeholder: "12", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: "100%" } })
+            )
+          ),
+          React.createElement("div", { style: { marginBottom: 10 } },
+            React.createElement("label", { style: { fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 } }, "Sonder-Nachkauf-Budget (€, optional)"),
+            React.createElement("input", { value: dcaExtra, onChange: e => setDcaExtra(e.target.value), type: "number", placeholder: "Einmalig für attraktive Gelegenheiten", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: "100%" } })
+          ),
+          dcaBudget && dcaMonths && React.createElement("div", { className: "m", style: { fontSize: 11, color: "#64748b", marginBottom: 10 } }, `→ €${(parseFloat(dcaBudget) / parseInt(dcaMonths)).toFixed(2)} / Monat${dcaExtra ? ` + €${parseFloat(dcaExtra).toFixed(2)} Sonder-Budget` : ""}`),
+          React.createElement("button", { onClick: async () => {
+            const budget = parseFloat(dcaBudget);
+            const mo = parseInt(dcaMonths);
+            const extra = parseFloat(dcaExtra) || 0;
+            if (!budget || budget <= 0 || !mo || mo <= 0) return;
+            if (!checkKeys()) return;
+            setBusyDca(true);
+            const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate);
+            setDcaPlan(plan);
+            setBusyDca(false);
+          }, disabled: busyDca || !dcaBudget || !dcaMonths || stocks.length === 0, style: {
+            width: "100%", padding: 11, borderRadius: 10, border: "none", cursor: busyDca ? "default" : "pointer",
+            fontSize: 13, fontWeight: 700, fontFamily: "inherit",
+            background: busyDca ? "#1e293b" : `linear-gradient(135deg,${X.indigo},#8b5cf6)`, color: busyDca ? "#475569" : "#fff"
+          } }, busyDca ? "⟳ Erstelle DCA-Plan…" : "DCA-Plan berechnen")
+        ),
+
+        dcaPlan && React.createElement(React.Fragment, null,
+          /* Summary */
+          React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 15, marginBottom: 8 } },
+            React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 } },
+              React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, `DCA-Plan: €${dcaPlan.monthlyTotal?.toFixed(2) || "?"}/Monat × ${dcaPlan.months || "?"} Monate`),
+              React.createElement("span", { className: "m", style: { fontSize: 11, color: X.green, fontWeight: 600 } }, `Σ €${((dcaPlan.monthlyTotal || 0) * (dcaPlan.months || 0)).toFixed(2)}`)
+            ),
+            React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: 0 } }, dcaPlan.summary)
+          ),
+
+          /* Monthly Plan */
+          React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", overflow: "hidden", marginBottom: 8 } },
+            React.createElement("div", { style: { padding: "10px 15px", borderBottom: "1px solid #1e293b" } },
+              React.createElement("span", { style: { fontSize: 12, fontWeight: 600 } }, "Monatliche Verteilung")
+            ),
+            dcaPlan.plan.map((p, i) => {
+              const prioCol = p.priority === "hoch" ? X.green : p.priority === "mittel" ? X.yellow : "#64748b";
+              return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < dcaPlan.plan.length - 1 ? "1px solid #1e293b22" : "none" } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 } },
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                    React.createElement("span", { style: { fontSize: 12, fontWeight: 600 } }, `${p.ticker}`),
+                    React.createElement("span", { style: { fontSize: 10, color: "#64748b" } }, p.name),
+                    React.createElement("span", { style: { fontSize: 8, padding: "2px 6px", borderRadius: 8, background: `${prioCol}22`, color: prioCol, fontWeight: 700 } }, p.priority?.toUpperCase())
+                  ),
+                  React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.green } }, `€${p.monthlyAmount?.toFixed(2)}`)
+                ),
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+                  React.createElement("span", { style: { fontSize: 10, color: "#94a3b8", flex: 1 } }, p.reason),
+                  React.createElement("span", { className: "m", style: { fontSize: 10, color: "#475569", flexShrink: 0, marginLeft: 8 } }, `${p.percentage}%`)
+                )
+              );
+            })
+          ),
+
+          /* Extra Allocations */
+          dcaPlan.extraAllocations?.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X.indigo}44`, overflow: "hidden", marginBottom: 8 } },
+            React.createElement("div", { style: { padding: "10px 15px", borderBottom: "1px solid #1e293b" } },
+              React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.purple } }, "Sonder-Nachkäufe (einmalig)")
+            ),
+            dcaPlan.extraAllocations.map((a, i) =>
+              React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < dcaPlan.extraAllocations.length - 1 ? "1px solid #1e293b22" : "none" } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
+                  React.createElement("span", { style: { fontSize: 12, fontWeight: 600 } }, a.ticker),
+                  React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.purple } }, `€${a.amount?.toFixed(2)}`)
+                ),
+                React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, a.reason)
+              )
+            )
+          ),
+
+          /* Warnings */
+          dcaPlan.warnings?.length > 0 && React.createElement("div", { style: { background: `${X.orange}08`, borderRadius: 12, border: `1px solid ${X.orange}33`, padding: 15, marginBottom: 8 } },
+            React.createElement("div", { style: { fontSize: 11, fontWeight: 600, color: X.orange, marginBottom: 6 } }, "Hinweise & Warnungen"),
+            dcaPlan.warnings.map((w, i) => React.createElement("div", { key: i, style: { fontSize: 11, color: "#94a3b8", marginTop: i > 0 ? 4 : 0 } }, `• ${w}`))
+          ),
+
+          /* Rebalance Hints */
+          dcaPlan.rebalanceHints?.length > 0 && React.createElement("div", { style: { background: `${X.cyan}08`, borderRadius: 12, border: `1px solid ${X.cyan}33`, padding: 15, marginBottom: 8 } },
+            React.createElement("div", { style: { fontSize: 11, fontWeight: 600, color: X.cyan, marginBottom: 6 } }, "Rebalancing-Empfehlungen"),
+            dcaPlan.rebalanceHints.map((h, i) => React.createElement("div", { key: i, style: { fontSize: 11, color: "#94a3b8", marginTop: i > 0 ? 4 : 0 } }, `• ${h}`))
+          )
+        ),
+
+        !dcaPlan && !busyDca && stocks.length > 0 && React.createElement("div", { style: { textAlign: "center", padding: 30, color: "#475569" } },
+          React.createElement("div", { style: { fontSize: 28, marginBottom: 8 } }, "📊"),
+          React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 5 } }, "DCA-Plan erstellen"),
+          React.createElement("div", { style: { fontSize: 12, color: "#64748b" } }, "Budget und Zeitraum eintragen, dann analysiert Claude die optimale monatliche Verteilung.")
+        ),
+
+        stocks.length === 0 && React.createElement("div", { style: { textAlign: "center", padding: 30, color: "#475569" } },
+          React.createElement("div", { style: { fontSize: 14, fontWeight: 600 } }, "Füge zuerst Aktien zum Portfolio hinzu")
         )
       ),
 
