@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "15.03.2026, 23:11 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 00:01 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -880,12 +880,23 @@ function Settings({ onClose }) {
         fmpResult && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: fmpResult.ok ? X.green : X.red, padding: "6px 10px", borderRadius: 8, background: fmpResult.ok ? `${X.green}15` : `${X.red}15` } }, fmpResult.msg)
       ),
       React.createElement("div", { style: { marginBottom: 20, borderTop: "1px solid #1e293b", paddingTop: 16 } },
-        React.createElement("label", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 6, display: "block" } }, "FRED API Key (Makro-Daten)"),
+        React.createElement("label", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 6, display: "block" } }, "FRED API (Makro-Daten)"),
         React.createElement("div", { style: { fontSize: 10, color: "#475569", marginBottom: 8 } }, "Kostenlos auf fred.stlouisfed.org — Zinsen, Yield Curve, CPI, GDP, Arbeitsmarkt"),
+        /* Proxy URL zuerst */
+        React.createElement("div", { style: { marginBottom: 12 } },
+          React.createElement("label", { style: { fontSize: 11, color: "#64748b", marginBottom: 4, display: "block" } }, "1. FRED Proxy URL (Cloudflare Worker)"),
+          React.createElement("div", { style: { fontSize: 10, color: "#475569", marginBottom: 6 } }, "Leer = lokaler Proxy (nur PC). Für Handy/PWA: Cloudflare Worker URL eintragen und speichern."),
+          React.createElement("input", { value: fredProxyState, onChange: e => setFredProxyState(e.target.value), placeholder: "https://dein-worker.dein-name.workers.dev", style: inp }),
+          React.createElement("button", { onClick: () => { setFredProxy(fredProxyState); setFredResult({ ok: true, msg: "Proxy-URL gespeichert!" }); }, style: { ...btn(`${X.indigo}22`, X.purple), marginTop: 8 } }, "Proxy speichern"),
+          !getFredProxy() && location.protocol === "https:" && React.createElement("div", { style: { marginTop: 6, fontSize: 10, color: X.orange, padding: "6px 10px", borderRadius: 8, background: `${X.orange}15` } }, "Keine Proxy-URL gespeichert. Auf Mobilgeräten wird eine Cloudflare Worker URL benötigt, damit FRED-Abfragen funktionieren.")
+        ),
+        /* API Key danach */
+        React.createElement("label", { style: { fontSize: 11, color: "#64748b", marginBottom: 4, display: "block" } }, "2. FRED API Key"),
         React.createElement("input", { type: "password", value: fredKeyState, onChange: e => setFredKeyState(e.target.value), placeholder: "FRED API Key…", style: inp }),
         React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 } },
           React.createElement("button", { onClick: () => { setFredKey(fredKeyState); setFredResult({ ok: true, msg: "Gespeichert!" }); }, style: btn(X.indigo, "#fff") }, "Speichern"),
           React.createElement("button", { onClick: async () => {
+            if (!getFredProxy() && location.protocol === "https:") { setFredResult({ ok: false, msg: "Bitte zuerst Proxy-URL eintragen und speichern (Schritt 1)." }); return; }
             setFredResult(null);
             try {
               const r = await fetch(`${fredProxyUrl()}?series_id=FEDFUNDS&api_key=${fredKeyState}&file_type=json&sort_order=desc&limit=1`);
@@ -895,13 +906,7 @@ function Settings({ onClose }) {
             } catch (e) { setFredResult({ ok: false, msg: "Fehler: " + e.message }); }
           }, disabled: !fredKeyState, style: btn(fredKeyState ? `${X.cyan}22` : "#1e293b", fredKeyState ? X.cyan : "#475569") }, "Testen")
         ),
-        fredResult && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: fredResult.ok ? X.green : X.red, padding: "6px 10px", borderRadius: 8, background: fredResult.ok ? `${X.green}15` : `${X.red}15` } }, fredResult.msg),
-        React.createElement("div", { style: { marginTop: 12 } },
-          React.createElement("label", { style: { fontSize: 11, color: "#64748b", marginBottom: 4, display: "block" } }, "FRED Proxy URL (Cloudflare Worker)"),
-          React.createElement("div", { style: { fontSize: 10, color: "#475569", marginBottom: 6 } }, "Leer = lokaler Proxy (nur PC). Für Handy/PWA: Cloudflare Worker URL eintragen."),
-          React.createElement("input", { value: fredProxyState, onChange: e => setFredProxyState(e.target.value), placeholder: "https://dein-worker.dein-name.workers.dev", style: inp }),
-          React.createElement("button", { onClick: () => { setFredProxy(fredProxyState); setFredResult({ ok: true, msg: "Proxy-URL gespeichert!" }); }, style: { ...btn(`${X.indigo}22`, X.purple), marginTop: 8 } }, "Proxy speichern")
-        )
+        fredResult && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: fredResult.ok ? X.green : X.red, padding: "6px 10px", borderRadius: 8, background: fredResult.ok ? `${X.green}15` : `${X.red}15` } }, fredResult.msg)
       ),
       React.createElement("div", { style: { borderTop: "1px solid #1e293b", paddingTop: 16, marginBottom: 20 } },
         React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 4 } }, "Portfolio Export / Import"),
@@ -1123,6 +1128,12 @@ function App() {
   const [showDashInfo, setShowDashInfo] = useState(false);
   const [editPPS, setEditPPS] = useState("");
   const [editDate, setEditDate] = useState("");
+  const [editCost, setEditCost] = useState("");
+  const [editingInitial, setEditingInitial] = useState(null);
+  const [editingNachkauf, setEditingNachkauf] = useState(null);
+  const [editNkAmount, setEditNkAmount] = useState("");
+  const [editNkPPS, setEditNkPPS] = useState("");
+  const [editNkDate, setEditNkDate] = useState("");
   const [keyWarning, setKeyWarning] = useState(null);
 
   const checkKeys = useCallback(() => {
@@ -1224,6 +1235,34 @@ function App() {
     setNachkaufBetrag("");
     setNachkaufPPS("");
     setNachkaufDate(new Date().toISOString().slice(0, 10));
+  }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
+
+  const updateNachkauf = useCallback((ticker, idx, fields) => {
+    setStocks(prev => {
+      const updated = prev.map(s => {
+        if (s.ticker !== ticker || !s.purchases) return s;
+        const oldP = s.purchases[idx];
+        const newP = { ...oldP, ...fields };
+        const newPurchases = s.purchases.map((p, i) => i === idx ? newP : p);
+        const costDiff = (newP.amount || 0) - (oldP.amount || 0);
+        return { ...s, cost: s.cost + costDiff, purchases: newPurchases };
+      });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs });
+      return updated;
+    });
+    setEditingNachkauf(null);
+  }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
+
+  const removeNachkauf = useCallback((ticker, idx) => {
+    setStocks(prev => {
+      const updated = prev.map(s => {
+        if (s.ticker !== ticker || !s.purchases) return s;
+        const removed = s.purchases[idx];
+        return { ...s, cost: s.cost - (removed.amount || 0), purchases: s.purchases.filter((_, i) => i !== idx) };
+      });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs });
+      return updated;
+    });
   }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
 
   /* ═══ RESEARCH ═══ */
@@ -1873,20 +1912,57 @@ function App() {
               )
             ),
             infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
-              React.createElement("div", null, `Investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
-              pl && React.createElement("div", { style: { marginTop: 3 } }, `Ø Kaufpreis: €${pl.avgCost.toFixed(2)}`),
-              pl && React.createElement("div", { style: { marginTop: 3 } }, `Anteile: ${pl.totalShares.toFixed(2)}`),
-              pl && React.createElement("div", { style: { marginTop: 3, color: pl.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(pl.currentValue - pl.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
-              pos.purchaseDate && React.createElement("div", { style: { marginTop: 3 } }, `Erstkauf: ${new Date(pos.purchaseDate).toLocaleDateString("de-DE")} (${holdingDuration(pos.purchaseDate)})`),
-              (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("div", { style: { marginTop: 6, padding: "6px 0", borderTop: "1px solid #334155", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" } },
-                React.createElement("span", { style: { color: X.orange, fontWeight: 600 } }, "Fehlend:"),
-                !pos.pricePerShare && React.createElement("input", { value: editPPS, onChange: e => setEditPPS(e.target.value), type: "number", placeholder: "Kaufpreis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
-                !pos.purchaseDate && React.createElement("input", { value: editDate, onChange: e => setEditDate(e.target.value), type: "date", placeholder: "Kaufdatum", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
-                React.createElement("button", { onClick: () => { const upd = {}; if (editPPS) upd.pricePerShare = parseFloat(editPPS); if (editDate) upd.purchaseDate = editDate; if (Object.keys(upd).length > 0) { updateStock(pos.ticker, upd); setEditPPS(""); setEditDate(""); } }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "Speichern")
+              pl && React.createElement("div", null, `Gesamt investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Ø €${pl.avgCost.toFixed(2)} · ${pl.totalShares.toFixed(2)} Anteile`),
+              pl && React.createElement("div", { style: { marginTop: 3, color: pl.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(pl.currentValue - pl.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${pl.plPct >= 0 ? "+" : ""}${pl.plPct.toFixed(1)}%)`),
+              /* Initialkauf */
+              React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: "1px solid #334155" } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+                  React.createElement("span", { style: { fontWeight: 600 } }, "Initialkauf"),
+                  editingInitial !== pos.ticker
+                    ? React.createElement("button", { onClick: () => { setEditingInitial(pos.ticker); setEditCost(String(pos.cost - (pos.purchases || []).reduce((s, p) => s + p.amount, 0))); setEditPPS(String(pos.pricePerShare || "")); setEditDate(pos.purchaseDate || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10, fontWeight: 600 } }, "Bearbeiten")
+                    : null
+                ),
+                editingInitial === pos.ticker
+                  ? React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 4 } },
+                      React.createElement("input", { value: editCost, onChange: e => setEditCost(e.target.value), type: "number", placeholder: "Invest €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
+                      React.createElement("input", { value: editPPS, onChange: e => setEditPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 100 } }),
+                      React.createElement("input", { value: editDate, onChange: e => setEditDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
+                      React.createElement("button", { onClick: () => {
+                        const nachkaufSum = (pos.purchases || []).reduce((s, p) => s + p.amount, 0);
+                        const upd = {};
+                        if (editCost) upd.cost = parseFloat(editCost) + nachkaufSum;
+                        if (editPPS) upd.pricePerShare = parseFloat(editPPS);
+                        if (editDate) upd.purchaseDate = editDate;
+                        if (Object.keys(upd).length > 0) updateStock(pos.ticker, upd);
+                        setEditingInitial(null); setEditCost(""); setEditPPS(""); setEditDate("");
+                      }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+                      React.createElement("button", { onClick: () => { setEditingInitial(null); setEditCost(""); setEditPPS(""); setEditDate(""); }, style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10 } }, "Abbrechen")
+                    )
+                  : React.createElement("div", { style: { marginTop: 2 } },
+                      `${pos.purchaseDate ? new Date(pos.purchaseDate).toLocaleDateString("de-DE") : "?"}: €${((pos.cost || 0) - (pos.purchases || []).reduce((s, p) => s + p.amount, 0)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${pos.pricePerShare?.toFixed(2) || "?"}`,
+                      pos.purchaseDate ? ` (${holdingDuration(pos.purchaseDate)})` : ""
+                    )
               ),
-              pos.purchases?.length > 0 && React.createElement("div", { style: { marginTop: 5, borderTop: "1px solid #334155", paddingTop: 5 } },
+              /* Nachkäufe */
+              pos.purchases?.length > 0 && React.createElement("div", { style: { marginTop: 6, borderTop: "1px solid #334155", paddingTop: 6 } },
                 React.createElement("div", { style: { fontWeight: 600, marginBottom: 3 } }, `${pos.purchases.length} Nachkäufe:`),
-                pos.purchases.map((p, i) => React.createElement("div", { key: i, style: { marginTop: 2 } }, `${new Date(p.date).toLocaleDateString("de-DE")}: €${p.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${p.pricePerShare?.toFixed(2) || "?"}`))
+                pos.purchases.map((p, i) =>
+                  editingNachkauf === `${pos.ticker}-${i}`
+                    ? React.createElement("div", { key: i, style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 3 } },
+                        React.createElement("input", { value: editNkAmount, onChange: e => setEditNkAmount(e.target.value), type: "number", placeholder: "Betrag €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
+                        React.createElement("input", { value: editNkPPS, onChange: e => setEditNkPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 100 } }),
+                        React.createElement("input", { value: editNkDate, onChange: e => setEditNkDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
+                        React.createElement("button", { onClick: () => { const upd = {}; if (editNkAmount) upd.amount = parseFloat(editNkAmount); if (editNkPPS) upd.pricePerShare = parseFloat(editNkPPS); if (editNkDate) upd.date = editNkDate; updateNachkauf(pos.ticker, i, upd); }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+                        React.createElement("button", { onClick: () => setEditingNachkauf(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10 } }, "Abb.")
+                      )
+                    : React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 } },
+                        React.createElement("span", null, `${new Date(p.date).toLocaleDateString("de-DE")}: €${p.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${p.pricePerShare?.toFixed(2) || "?"}`),
+                        React.createElement("span", { style: { display: "flex", gap: 4, flexShrink: 0 } },
+                          React.createElement("button", { onClick: () => { setEditingNachkauf(`${pos.ticker}-${i}`); setEditNkAmount(String(p.amount)); setEditNkPPS(String(p.pricePerShare || "")); setEditNkDate(p.date || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10 } }, "✎"),
+                          React.createElement("button", { onClick: () => { if (confirm(`Nachkauf vom ${new Date(p.date).toLocaleDateString("de-DE")} löschen?`)) removeNachkauf(pos.ticker, i); }, style: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 10 } }, "✕")
+                        )
+                      )
+                )
               )
             ),
             nachkaufTicker === pos.ticker && React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, padding: "8px 0", borderTop: "1px solid #1e293b" } },
@@ -1934,21 +2010,63 @@ function App() {
                 )
               ),
               infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
-                React.createElement("div", null, `Investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
-                pl && React.createElement("div", { style: { marginTop: 3 } }, `Ø Kaufpreis: €${pl.avgCost.toFixed(2)}`),
-                pl && React.createElement("div", { style: { marginTop: 3 } }, `Anteile: ${pl.totalShares.toFixed(2)}`),
-                pl && React.createElement("div", { style: { marginTop: 3, color: pl.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(pl.currentValue - pl.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
-                pos.purchaseDate && React.createElement("div", { style: { marginTop: 3 } }, `Erstkauf: ${new Date(pos.purchaseDate).toLocaleDateString("de-DE")} (${holdingDuration(pos.purchaseDate)})`),
-                pos.purchases?.length > 0 && React.createElement("div", { style: { marginTop: 5, borderTop: "1px solid #334155", paddingTop: 5 } },
+                pl && React.createElement("div", null, `Gesamt investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Ø €${pl.avgCost.toFixed(2)} · ${pl.totalShares.toFixed(2)} Anteile`),
+                pl && React.createElement("div", { style: { marginTop: 3, color: pl.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(pl.currentValue - pl.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${pl.plPct >= 0 ? "+" : ""}${pl.plPct.toFixed(1)}%)`),
+                React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: "1px solid #334155" } },
+                  React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+                    React.createElement("span", { style: { fontWeight: 600 } }, "Initialkauf"),
+                    editingInitial !== pos.ticker
+                      ? React.createElement("button", { onClick: () => { setEditingInitial(pos.ticker); setEditCost(String(pos.cost - (pos.purchases || []).reduce((s, p) => s + p.amount, 0))); setEditPPS(String(pos.pricePerShare || "")); setEditDate(pos.purchaseDate || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10, fontWeight: 600 } }, "Bearbeiten")
+                      : null
+                  ),
+                  editingInitial === pos.ticker
+                    ? React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 4 } },
+                        React.createElement("input", { value: editCost, onChange: e => setEditCost(e.target.value), type: "number", placeholder: "Invest €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
+                        React.createElement("input", { value: editPPS, onChange: e => setEditPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 100 } }),
+                        React.createElement("input", { value: editDate, onChange: e => setEditDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
+                        React.createElement("button", { onClick: () => {
+                          const nachkaufSum = (pos.purchases || []).reduce((s, p) => s + p.amount, 0);
+                          const upd = {};
+                          if (editCost) upd.cost = parseFloat(editCost) + nachkaufSum;
+                          if (editPPS) upd.pricePerShare = parseFloat(editPPS);
+                          if (editDate) upd.purchaseDate = editDate;
+                          if (Object.keys(upd).length > 0) updateStock(pos.ticker, upd);
+                          setEditingInitial(null); setEditCost(""); setEditPPS(""); setEditDate("");
+                        }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+                        React.createElement("button", { onClick: () => { setEditingInitial(null); setEditCost(""); setEditPPS(""); setEditDate(""); }, style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10 } }, "Abbrechen")
+                      )
+                    : React.createElement("div", { style: { marginTop: 2 } },
+                        `${pos.purchaseDate ? new Date(pos.purchaseDate).toLocaleDateString("de-DE") : "?"}: €${((pos.cost || 0) - (pos.purchases || []).reduce((s, p) => s + p.amount, 0)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${pos.pricePerShare?.toFixed(2) || "?"}`,
+                        pos.purchaseDate ? ` (${holdingDuration(pos.purchaseDate)})` : ""
+                      )
+                ),
+                pos.purchases?.length > 0 && React.createElement("div", { style: { marginTop: 6, borderTop: "1px solid #334155", paddingTop: 6 } },
                   React.createElement("div", { style: { fontWeight: 600, marginBottom: 3 } }, `${pos.purchases.length} Nachkäufe:`),
-                  ...pos.purchases.map((p, i) => React.createElement("div", { key: i, style: { marginTop: 2 } }, `${new Date(p.date).toLocaleDateString("de-DE")}: €${p.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${p.pricePerShare?.toFixed(2) || "?"}`))
+                  pos.purchases.map((p, i) =>
+                    editingNachkauf === `${pos.ticker}-${i}`
+                      ? React.createElement("div", { key: i, style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 3 } },
+                          React.createElement("input", { value: editNkAmount, onChange: e => setEditNkAmount(e.target.value), type: "number", placeholder: "Betrag €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
+                          React.createElement("input", { value: editNkPPS, onChange: e => setEditNkPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 100 } }),
+                          React.createElement("input", { value: editNkDate, onChange: e => setEditNkDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
+                          React.createElement("button", { onClick: () => { const upd = {}; if (editNkAmount) upd.amount = parseFloat(editNkAmount); if (editNkPPS) upd.pricePerShare = parseFloat(editNkPPS); if (editNkDate) upd.date = editNkDate; updateNachkauf(pos.ticker, i, upd); }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+                          React.createElement("button", { onClick: () => setEditingNachkauf(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10 } }, "Abb.")
+                        )
+                      : React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 } },
+                          React.createElement("span", null, `${new Date(p.date).toLocaleDateString("de-DE")}: €${p.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${p.pricePerShare?.toFixed(2) || "?"}`),
+                          React.createElement("span", { style: { display: "flex", gap: 4, flexShrink: 0 } },
+                            React.createElement("button", { onClick: () => { setEditingNachkauf(`${pos.ticker}-${i}`); setEditNkAmount(String(p.amount)); setEditNkPPS(String(p.pricePerShare || "")); setEditNkDate(p.date || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10 } }, "✎"),
+                            React.createElement("button", { onClick: () => { if (confirm(`Nachkauf vom ${new Date(p.date).toLocaleDateString("de-DE")} löschen?`)) removeNachkauf(pos.ticker, i); }, style: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 10 } }, "✕")
+                          )
+                        )
+                  )
                 )
               ),
               nachkaufTicker === pos.ticker && React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, padding: "8px 0", borderTop: "1px solid #1e293b" } },
                 React.createElement("span", { style: { fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap" } }, "Nachkauf"),
                 React.createElement("input", { value: nachkaufBetrag, onChange: e => setNachkaufBetrag(e.target.value), type: "number", placeholder: "Betrag €", autoFocus: true, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
                 React.createElement("input", { value: nachkaufPPS, onChange: e => setNachkaufPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 110 } }),
-                React.createElement("button", { onClick: () => addNachkauf(pos.ticker, nachkaufBetrag, nachkaufPPS), style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+                React.createElement("input", { value: nachkaufDate, onChange: e => setNachkaufDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
+                React.createElement("button", { onClick: () => addNachkauf(pos.ticker, nachkaufBetrag, nachkaufPPS, nachkaufDate), style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
                 React.createElement("button", { onClick: () => setNachkaufTicker(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 11 } }, "Abbrechen")
               ),
               pr && React.createElement("div", { style: { fontSize: 11, color: "#94a3b8", lineHeight: 1.6, marginTop: 9, paddingTop: 9, borderTop: "1px solid #1e293b" } }, pr.summary)
