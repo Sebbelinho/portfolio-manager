@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "15.03.2026, 22:56 Uhr";
+const BUILD_TIMESTAMP = "15.03.2026, 23:00 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -2097,8 +2097,8 @@ function App() {
       /* ═══ CALENDAR ═══ */
       tab === "calendar" && React.createElement(React.Fragment, null,
         React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } },
-          React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", margin: 0 } }, earningsCal.length > 0 ? `${earningsCal.length} Earnings-Termine (nächste 120 Tage)` : "Lade Earnings-Kalender…"),
-          React.createElement("button", { onClick: () => { const k = getFmpKey(); const t = stocks.map(s => s.ticker); if (k && t.length > 0) fetchEarningsCalendar(k, t).then(cal => setEarningsCal(cal)); }, style: { background: `${X.indigo}22`, color: X.purple, border: "none", borderRadius: 8, padding: "5px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer" } }, "↻ Aktualisieren")
+          React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", margin: 0 } }, earningsCal.length > 0 ? `${earningsCal.length} Earnings-Termine (nächste 120 Tage)` : "Keine Earnings-Termine geladen"),
+          React.createElement("button", { onClick: () => { const k = getFmpKey(); const t = stocks.map(s => s.ticker); if (k) fetchEarningsCalendar(k, t).then(cal => setEarningsCal(cal)); }, style: { background: `${X.indigo}22`, color: X.purple, border: "none", borderRadius: 8, padding: "5px 10px", fontSize: 10, fontWeight: 700, cursor: "pointer" } }, "↻ Aktualisieren")
         ),
         React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", overflow: "hidden" } },
           earningsCal.length > 0 ? earningsCal.map((ev, i) =>
