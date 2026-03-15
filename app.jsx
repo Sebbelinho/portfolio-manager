@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "15.03.2026, 22:27 Uhr";
+const BUILD_TIMESTAMP = "15.03.2026, 22:51 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -130,7 +130,8 @@ async function fetchFredData() {
 }
 
 /* ═══ VIX + Sektor-ETFs via Finnhub ═══ */
-const MARKET_TICKERS = { vix: "^VIX", xlk: "XLK", smh: "SMH", spy: "SPY" };
+// VIXY = VIX-Proxy-ETF (ProShares), da Finnhub Free kein ^VIX unterstützt
+const MARKET_TICKERS = { vix: "VIXY", xlk: "XLK", smh: "SMH", spy: "SPY" };
 
 async function fetchMarketIndicators() {
   const token = getFmpKey();
@@ -140,20 +141,26 @@ async function fetchMarketIndicators() {
   const dbIdx = _debugLog.length - 1;
   try {
     const results = {};
+    const failed = [];
     for (const [key, symbol] of Object.entries(MARKET_TICKERS)) {
       try {
         const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${token}`);
         const q = await r.json();
         if (q && q.c && q.c > 0) {
           results[key] = { price: q.c, change: q.d, changePct: q.dp, prevClose: q.pc };
+        } else {
+          failed.push(`${symbol}(keine Daten)`);
         }
-      } catch {}
+      } catch (e) {
+        failed.push(`${symbol}(${e.message})`);
+      }
     }
     const parts = [];
     if (results.vix) parts.push(`VIX ${results.vix.price}`);
     if (results.xlk) parts.push(`XLK ${results.xlk.changePct > 0 ? "+" : ""}${results.xlk.changePct?.toFixed(1)}%`);
     if (results.smh) parts.push(`SMH ${results.smh.changePct > 0 ? "+" : ""}${results.smh.changePct?.toFixed(1)}%`);
-    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: `Markt: ${parts.join(" | ")}` };
+    if (failed.length > 0) parts.push(`⚠ ${failed.join(", ")}`);
+    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: failed.length > 0 && parts.length === failed.length ? "error" : "ok", code: 200, label: `Markt: ${parts.join(" | ")}` };
     _debugListeners.forEach(fn => fn([..._debugLog]));
     return results;
   } catch (e) {
@@ -296,11 +303,19 @@ async function fetchEarningsCalendar(token, portfolioTickers) {
   const to = new Date(today.getTime() + 120 * 86400000).toISOString().slice(0, 10);
   const calendarTickers = new Set([...portfolioTickers, ...HYPERSCALER_TICKERS]);
   const criticalTickers = new Set([...portfolioTickers, ...HYPERSCALER_TICKERS]);
+  const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  debugPush({ ts, label: `Earnings-Kalender (${from} → ${to})`, status: "pending", fmp: true, tokens: 0 });
+  const dbIdx = _debugLog.length - 1;
   try {
     const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${token}`);
     const data = await r.json();
-    if (!data?.earningsCalendar) return [];
-    return data.earningsCalendar
+    if (!data?.earningsCalendar) {
+      _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: r.status, detail: "Keine earningsCalendar in Antwort" };
+      _debugListeners.forEach(fn => fn([..._debugLog]));
+      return [];
+    }
+    const total = data.earningsCalendar.length;
+    const filtered = data.earningsCalendar
       .filter(e => calendarTickers.has(e.symbol))
       .map(e => {
         const d = new Date(e.date);
@@ -316,8 +331,12 @@ async function fetchEarningsCalendar(token, portfolioTickers) {
         };
       })
       .sort((a, b) => a.date.localeCompare(b.date));
+    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: `Earnings: ${filtered.length} Treffer (von ${total} gesamt, Suche: ${[...calendarTickers].join(",")})` };
+    _debugListeners.forEach(fn => fn([..._debugLog]));
+    return filtered;
   } catch (e) {
-    console.warn("Earnings calendar fetch failed:", e.message);
+    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: 0, detail: e.message };
+    _debugListeners.forEach(fn => fn([..._debugLog]));
     return [];
   }
 }
@@ -1546,9 +1565,9 @@ function App() {
             React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.fedFundsRate.current}%`),
             macro.fedFundsRate.previous != null && React.createElement("div", { style: { fontSize: 9, color: macro.fedFundsRate.current > macro.fedFundsRate.previous ? X.orange : macro.fedFundsRate.current < macro.fedFundsRate.previous ? X.green : "#475569" } }, macro.fedFundsRate.current > macro.fedFundsRate.previous ? "▲ Steigend" : macro.fedFundsRate.current < macro.fedFundsRate.previous ? "▼ Fallend" : "▶ Stabil")
           ),
-          marketIndicators?.vix && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${marketIndicators.vix.price > 30 ? X.red + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
-            React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "VIX"),
-            React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: marketIndicators.vix.price > 30 ? X.red : marketIndicators.vix.price > 20 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, marketIndicators.vix.price.toFixed(1))
+          marketIndicators?.vix && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${marketIndicators.vix.changePct > 5 ? X.red + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
+            React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "VIXY"),
+            React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: marketIndicators.vix.changePct > 5 ? X.red : marketIndicators.vix.changePct < -5 ? X.green : "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${marketIndicators.vix.changePct >= 0 ? "+" : ""}${marketIndicators.vix.changePct?.toFixed(1)}%`)
           ),
           macro?.yieldSpread && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${macro.yieldSpread.status === "inverted" ? X.red + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
             React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Yield Curve"),
@@ -1667,10 +1686,10 @@ function App() {
         marketIndicators && React.createElement(React.Fragment, null,
           React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.indigo, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" } }, "Marktindikatoren (Finnhub)"),
           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 } },
-            marketIndicators.vix && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${marketIndicators.vix.price > 30 ? X.red + "44" : marketIndicators.vix.price > 20 ? X.yellow + "44" : "#1e293b"}`, padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "VIX (Volatilität)"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: marketIndicators.vix.price > 30 ? X.red : marketIndicators.vix.price > 20 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, marketIndicators.vix.price.toFixed(1)),
-              React.createElement("div", { style: { fontSize: 10, color: marketIndicators.vix.price > 30 ? X.green : marketIndicators.vix.price < 15 ? X.orange : "#64748b", marginTop: 2 } }, marketIndicators.vix.price > 30 ? "Angst — tendenziell Kaufgelegenheit" : marketIndicators.vix.price < 15 ? "Sorglosigkeit — Vorsicht" : "Normales Niveau")
+            marketIndicators.vix && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${marketIndicators.vix.changePct > 10 ? X.red + "44" : marketIndicators.vix.changePct > 5 ? X.yellow + "44" : "#1e293b"}`, padding: 13 } },
+              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "VIXY (Volatilität)"),
+              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `$${marketIndicators.vix.price.toFixed(2)}`),
+              React.createElement("div", { style: { fontSize: 10, color: marketIndicators.vix.changePct > 5 ? X.red : marketIndicators.vix.changePct < -5 ? X.green : "#64748b", marginTop: 2 } }, `${marketIndicators.vix.changePct >= 0 ? "+" : ""}${marketIndicators.vix.changePct?.toFixed(1)}% — ${marketIndicators.vix.changePct > 5 ? "Angst steigt" : marketIndicators.vix.changePct < -5 ? "Angst fällt" : "Stabil"}`)
             ),
             marketIndicators.spy && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
               React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "S&P 500 (SPY)"),
@@ -1912,9 +1931,9 @@ function App() {
         timing ? React.createElement(React.Fragment, null,
           /* Macro Context Strip */
           (marketIndicators || macro) && React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 12 } },
-            marketIndicators?.vix && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${marketIndicators.vix.price > 30 ? X.red + "33" : marketIndicators.vix.price > 20 ? X.yellow + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
-              React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "VIX"),
-              React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: marketIndicators.vix.price > 30 ? X.red : marketIndicators.vix.price > 20 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, marketIndicators.vix.price.toFixed(1))
+            marketIndicators?.vix && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${marketIndicators.vix.changePct > 5 ? X.red + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
+              React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "VIXY"),
+              React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: marketIndicators.vix.changePct > 5 ? X.red : marketIndicators.vix.changePct < -5 ? X.green : "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${marketIndicators.vix.changePct >= 0 ? "+" : ""}${marketIndicators.vix.changePct?.toFixed(1)}%`)
             ),
             macro?.yieldSpread && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${macro.yieldSpread.status === "inverted" ? X.red + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
               React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Yield"),
