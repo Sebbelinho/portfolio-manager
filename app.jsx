@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "15.03.2026, 22:51 Uhr";
+const BUILD_TIMESTAMP = "15.03.2026, 22:56 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -921,7 +921,8 @@ function DebugPanel({ active }) {
   const endRef = useRef(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [log.length]);
   const hasErrors = log.some(l => l.status === "error");
-  if (log.length === 0 || (!active && !hasErrors)) return null;
+  const hasPending = log.some(l => l.status === "pending");
+  if (log.length === 0 || (!active && !hasErrors && !hasPending)) return null;
   const statCol = { ok: X.green, error: X.red, pending: X.yellow };
   const statLabel = { ok: "✓", error: "✕", pending: "⟳" };
   return React.createElement("div", { style: { background: "#0d1117", border: "1px solid #1e293b", borderRadius: 10, padding: 12, marginTop: 10, maxHeight: 220, overflowY: "auto" } },
