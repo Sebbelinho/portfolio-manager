@@ -34,7 +34,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').then(reg => {
+        navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
           // Check for SW updates every 10 seconds
           setInterval(() => reg.update().catch(() => {}), 10000);
         }).catch(() => {});

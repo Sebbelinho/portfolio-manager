@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 22:17 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 22:21 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -790,7 +790,7 @@ async function doDCAPlan(stockList, totalBudget, months, extraBudget, fmpData, i
   if (macroData) {
     const parts = [];
     if (macroData.fedFundsRate) parts.push(`Fed Funds Rate: ${macroData.fedFundsRate.value}%`);
-    if (macroData.yieldSpread != null) parts.push(`Yield Spread (10Y-2Y): ${macroData.yieldSpread.toFixed(2)}%`);
+    if (macroData.yieldSpread != null) parts.push(`Yield Spread (10Y-2Y): ${Number(macroData.yieldSpread).toFixed(2)}%`);
     if (macroData.cpiYoy) parts.push(`CPI YoY: ${macroData.cpiYoy.value}%`);
     if (macroData.unemployment) parts.push(`Arbeitslosigkeit: ${macroData.unemployment.value}%`);
     if (parts.length > 0) macroBlock = `\n\nMakro-Kontext:\n${parts.join("\n")}`;
