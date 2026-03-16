@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 23:22 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 23:34 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -596,12 +596,15 @@ Nutze die Makro-Daten für Zinsumfeld-Alert: grün=stabile/fallende Zinsen, gelb
 }
 
 async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap, macroData, marketData, extraBudget, dcaMonths, eurUsdRate) {
+  const totalInvested = stockList.reduce((sum, s) => sum + s.cost, 0);
   const stockInfo = stockList.map(s => {
-    let info = `${s.ticker} (${s.name}, Sektor: ${s.sector}, Investiert: €${s.cost.toFixed(2)}`;
+    const pctOfPortfolio = totalInvested > 0 ? (s.cost / totalInvested * 100).toFixed(1) : "0";
+    let info = `${s.ticker} (${s.name}, Sektor: ${s.sector}, Investiert: €${s.cost.toFixed(2)}, Anteil: ${pctOfPortfolio}%`;
     if (s.pricePerShare && fmpData[s.ticker]?.price && eurUsdRate) {
       const curEur = fmpData[s.ticker].price * eurUsdRate;
+      const curValue = curEur * (s.cost / s.pricePerShare);
       const plPct = ((curEur - s.pricePerShare) / s.pricePerShare * 100).toFixed(1);
-      info += `, Ø Kaufpreis: €${s.pricePerShare.toFixed(2)}, Aktuell: €${curEur.toFixed(2)}, P/L: ${plPct}%`;
+      info += `, Ø Kaufpreis: €${s.pricePerShare.toFixed(2)}, Aktuell: €${curEur.toFixed(2)}, Aktueller Wert: €${curValue.toFixed(2)}, P/L: ${plPct}%`;
     }
     if (s.sensitivity) info += `, Sens: ${s.sensitivity}`;
     if (s.moat) info += `, Moat: ${s.moat}`;
@@ -649,7 +652,11 @@ async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap, m
 
   try {
     const raw = await callAPI(
-      `Du analysierst Kurs-Timing für ein Portfolio. Aktien: ${stockInfo}
+      `Du analysierst Kurs-Timing für ein Portfolio.
+Gesamt investiert: €${totalInvested.toFixed(2)} in ${stockList.length} Positionen.
+Gleichgewichtung wäre ${(100 / stockList.length).toFixed(1)}% pro Position.
+
+Aktien: ${stockInfo}
 
 Aktuelle Kursdaten: ${JSON.stringify(priceData)}${fmpBlock}${insiderBlock}${macroTimingBlock}
 
