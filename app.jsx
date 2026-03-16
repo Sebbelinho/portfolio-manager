@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 01:06 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 01:19 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -809,6 +809,10 @@ async function doDCAPlan(stockList, totalBudget, months, extraBudget, fmpData, i
   const remainingBudget = Math.max(0, totalBudget - totalInvested);
   const monthlyBudget = (remainingBudget / months).toFixed(2);
 
+  const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  debugPush({ ts, label: `DCA-Plan: €${remainingBudget.toFixed(0)} über ${months}M (€${monthlyBudget}/M)${extraBudget > 0 ? ` + €${extraBudget.toFixed(0)} Sonder` : ""}`, status: "pending", search: false, tokens: 3000 });
+  const dbIdx = _debugLog.length - 1;
+
   try {
     const raw = await callAPI(
       `Du erstellst einen Dollar-Cost-Averaging (DCA) Plan für ein Portfolio.
@@ -851,10 +855,28 @@ Alle Texte auf Deutsch.`,
       if (j.warnings) j.warnings = j.warnings.map(cleanText);
       if (j.rebalanceHints) j.rebalanceHints = j.rebalanceHints.map(cleanText);
       if (j.extraAllocations) j.extraAllocations = j.extraAllocations.map(a => ({ ...a, reason: cleanText(a.reason), detail: a.detail ? cleanText(a.detail) : null }));
+      _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: `DCA-Plan: ${j.plan.length} Positionen, €${monthlyBudget}/M` };
+      _debugListeners.forEach(fn => fn([..._debugLog]));
+      const ts2 = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      j.plan.forEach(p => {
+        const prioIcon = p.priority === "hoch" ? "▲" : p.priority === "mittel" ? "▶" : "▼";
+        debugPush({ ts: ts2, label: `${prioIcon} ${p.ticker}: €${p.monthlyAmount?.toFixed(2)}/M (${p.percentage}%) — ${p.reason}`, status: "ok", code: 200, tokens: 0 });
+      });
+      if (j.extraAllocations?.length > 0) {
+        j.extraAllocations.forEach(a => {
+          debugPush({ ts: ts2, label: `★ Sonder: ${a.ticker} €${a.amount?.toFixed(2)} — ${a.reason}`, status: "ok", code: 200, tokens: 0 });
+        });
+      }
       return j;
     }
+    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: 0, detail: "Kein gültiger Plan in Antwort" };
+    _debugListeners.forEach(fn => fn([..._debugLog]));
     return null;
-  } catch { return null; }
+  } catch (e) {
+    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: 0, detail: e.message };
+    _debugListeners.forEach(fn => fn([..._debugLog]));
+    return null;
+  }
 }
 
 /* ═══ COLORS ═══ */
@@ -1711,7 +1733,7 @@ function App() {
       ),
 
       /* ── DEBUG PANEL (bleibt sichtbar bei Fehlern) ── */
-      React.createElement(DebugPanel, { active: busy || busyTiming }),
+      React.createElement(DebugPanel, { active: busy || busyTiming || busyDca }),
 
       /* ── TABS ── */
       React.createElement("div", { style: { display: "flex", gap: 2, margin: "10px 0 14px", background: "#111827", borderRadius: 10, padding: 3 } },
