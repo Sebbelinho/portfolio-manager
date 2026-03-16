@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 22:54 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 22:59 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -1247,6 +1247,10 @@ function App() {
       if (saved.logs) setLogs(saved.logs);
       if (saved.macro) setMacro(saved.macro);
       if (saved.marketIndicators) setMarketIndicators(saved.marketIndicators);
+      if (saved.dcaPlan) setDcaPlan(saved.dcaPlan);
+      if (saved.dcaBudget) setDcaBudget(saved.dcaBudget);
+      if (saved.dcaMonths) setDcaMonths(saved.dcaMonths);
+      if (saved.dcaExtra) setDcaExtra(saved.dcaExtra);
     }
     setDataLoaded(true);
     // Earnings-Kalender + EUR/USD-Kurs laden
@@ -1333,9 +1337,9 @@ function App() {
   }, []);
 
   const persistAll = useCallback((overrides = {}) => {
-    const payload = { stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun: lastRun?.toISOString(), logs, macro, marketIndicators, ...overrides };
+    const payload = { stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun: lastRun?.toISOString(), logs, macro, marketIndicators, dcaPlan, dcaBudget, dcaMonths, dcaExtra, ...overrides };
     saveData(payload);
-  }, [stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun, logs, macro, marketIndicators]);
+  }, [stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun, logs, macro, marketIndicators, dcaPlan, dcaBudget, dcaMonths, dcaExtra]);
 
   const addStock = useCallback(() => {
     if (!addTicker.trim() || !addName.trim()) return;
@@ -1348,7 +1352,7 @@ function App() {
     };
     setStocks(prev => {
       const updated = [...prev, newStock];
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
       return updated;
     });
     setAddTicker(""); setAddName(""); setAddSector(""); setAddCost(""); setAddPricePerShare(""); setAddDate(new Date().toISOString().slice(0, 10)); setAddType("other"); setAddSens("low"); setAddMoat("medium");
@@ -1370,7 +1374,7 @@ function App() {
   const updateStock = useCallback((ticker, fields) => {
     setStocks(prev => {
       const updated = prev.map(s => s.ticker === ticker ? { ...s, ...fields } : s);
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
       return updated;
     });
   }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
@@ -1381,7 +1385,7 @@ function App() {
     if (!amount || amount <= 0 || !pricePS || pricePS <= 0) return;
     setStocks(prev => {
       const updated = prev.map(s => s.ticker === ticker ? { ...s, cost: s.cost + amount, purchases: [...(s.purchases || []), { amount, pricePerShare: pricePS, date: date || new Date().toISOString().slice(0, 10) }] } : s);
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
       return updated;
     });
     setNachkaufTicker(null);
@@ -1400,7 +1404,7 @@ function App() {
         const costDiff = (newP.amount || 0) - (oldP.amount || 0);
         return { ...s, cost: s.cost + costDiff, purchases: newPurchases };
       });
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
       return updated;
     });
     setEditingNachkauf(null);
@@ -1413,7 +1417,7 @@ function App() {
         const removed = s.purchases[idx];
         return { ...s, cost: s.cost - (removed.amount || 0), purchases: s.purchases.filter((_, i) => i !== idx) };
       });
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
       return updated;
     });
   }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
@@ -1573,7 +1577,7 @@ function App() {
     debugSaveToServer(stocks, fmpData, eurUsdRate);
 
     setLogs(prevLogs => {
-      saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, lastRun: now.toISOString(), logs: prevLogs });
+      saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, lastRun: now.toISOString(), logs: prevLogs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
       return prevLogs;
     });
   }, [addLog, stocks]);
@@ -2353,6 +2357,7 @@ function App() {
             try {
               const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate);
               setDcaPlan(plan);
+              persistAll({ dcaPlan: plan });
             } catch (e) {
               const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
               debugPush({ ts, label: `DCA-Plan Fehler: ${e.message}`, status: "error", code: 0, detail: e.message });
