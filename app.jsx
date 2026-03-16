@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 22:40 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 22:54 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -840,12 +840,14 @@ Erstelle einen konkreten, monatlichen DCA-Plan. Berücksichtige:
 5. Insider-Aktivität — viele Insider-Käufe = positiv, viele Verkäufe = vorsichtiger
 6. Makro-Umfeld — Zinsumfeld und Marktlage einbeziehen
 7. Sektor-Diversifikation — Klumpenrisiko vermeiden
-${extraBudget > 0 ? "8. Sonder-Nachkauf-Budget: Setze es NUR ein, wenn aktuell wirklich attraktive Chancen bestehen (z.B. deutlich unterbewertet, starkes Kaufsignal, Insider-Käufe). Wenn keine überzeugenden Gelegenheiten vorliegen, empfehle explizit das Budget zurückzuhalten. Es muss NICHT das gesamte Budget ausgegeben werden — nur so viel wie die aktuelle Marktlage rechtfertigt (0-3 Positionen, Teilbeträge erlaubt)." : ""}
+8. Umschichtungen: Wenn Positionen deutlich übergewichtet sind und gleichzeitig untergewichtete Positionen attraktiver bewertet sind, schlage konkrete Umschichtungen vor (Verkauf X € von Aktie A → Kauf Aktie B). Nur vorschlagen wenn es wirklich sinnvoll ist — nicht erzwingen. Das Array kann leer [] sein.
+${extraBudget > 0 ? "9. Sonder-Nachkauf-Budget: Setze es NUR ein, wenn aktuell wirklich attraktive Chancen bestehen (z.B. deutlich unterbewertet, starkes Kaufsignal, Insider-Käufe). Wenn keine überzeugenden Gelegenheiten vorliegen, empfehle explizit das Budget zurückzuhalten. Es muss NICHT das gesamte Budget ausgegeben werden — nur so viel wie die aktuelle Marktlage rechtfertigt (0-3 Positionen, Teilbeträge erlaubt)." : ""}
 
 Antworte NUR mit validem JSON:
-{"summary":"2-3 Sätze Gesamtstrategie deutsch","monthlyTotal":${monthlyBudget},"months":${months},"plan":[{"ticker":"XXX","name":"Name","monthlyAmount":100,"percentage":10,"reason":"1 Satz deutsch","detail":"3-5 Sätze ausführliche Begründung deutsch: Bewertung, Timing, Gewichtung, Risiko, Makro-Einfluss","priority":"hoch|mittel|niedrig"}]${extraBudget > 0 ? ',"extraAllocations":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze ausführliche Begründung deutsch"}]' : ""},"warnings":["Warnung1 deutsch"],"rebalanceHints":["Hinweis1 deutsch"]}
+{"summary":"2-3 Sätze Gesamtstrategie deutsch","monthlyTotal":${monthlyBudget},"months":${months},"plan":[{"ticker":"XXX","name":"Name","monthlyAmount":100,"percentage":10,"reason":"1 Satz deutsch","detail":"3-5 Sätze ausführliche Begründung deutsch: Bewertung, Timing, Gewichtung, Risiko, Makro-Einfluss","priority":"hoch|mittel|niedrig"}],"rebalanceTrades":[{"fromTicker":"AAA","toTicker":"BBB","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze Begründung deutsch"}]${extraBudget > 0 ? ',"extraAllocations":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze ausführliche Begründung deutsch"}]' : ""},"warnings":["Warnung1 deutsch"],"rebalanceHints":["Hinweis1 deutsch"]}
 
 monthlyAmount = Euro-Betrag pro Monat. percentage = Anteil am Monatsbudget. Die Summe aller monthlyAmount MUSS exakt €${monthlyBudget} ergeben.
+WICHTIG zu rebalanceTrades: Nur vorschlagen wenn eine Position DEUTLICH übergewichtet ist UND eine untergewichtete Position attraktiver bewertet ist. fromTicker=Verkauf, toTicker=Kauf, amount=Euro-Betrag der Umschichtung. Das Array kann leer [] sein wenn keine Umschichtung sinnvoll ist.
 ${extraBudget > 0 ? "WICHTIG zu extraAllocations: Das Array MUSS leer [] sein wenn aktuell keine wirklich attraktiven Nachkauf-Chancen bestehen. Nur befüllen bei echten Gelegenheiten (deutlich unterbewertet, starkes Kaufsignal etc.). Es muss NICHT das gesamte Sonder-Budget ausgegeben werden — Teilbeträge sind erlaubt." : ""}
 Alle Texte auf Deutsch.`,
       "Du bist ein erfahrener Portfolio-Manager und professioneller Aktienhändler mit über 20 Jahren Erfahrung im institutionellen Asset Management. Du spezialisierst dich auf systematische DCA-Strategien für Growth- und Technologie-Portfolios. Deine Empfehlungen sind datengetrieben, präzise und berücksichtigen sowohl Fundamental- als auch Makro-Faktoren. NUR valides JSON. Kein Markdown. Keine Backticks.",
@@ -859,14 +861,20 @@ Alle Texte auf Deutsch.`,
       if (j.warnings) j.warnings = j.warnings.map(cleanText);
       if (j.rebalanceHints) j.rebalanceHints = j.rebalanceHints.map(cleanText);
       if (j.extraAllocations) j.extraAllocations = j.extraAllocations.map(a => ({ ...a, reason: cleanText(a.reason), detail: a.detail ? cleanText(a.detail) : null }));
+      if (j.rebalanceTrades) j.rebalanceTrades = j.rebalanceTrades.map(t => ({ ...t, reason: cleanText(t.reason), detail: t.detail ? cleanText(t.detail) : null }));
       _debugLog[startIdx] = { ..._debugLog[startIdx], status: "ok" };
-      _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: `DCA-Plan: ${j.plan.length} Positionen, €${monthlyBudget}/M` };
+      _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: `DCA-Plan: ${j.plan.length} Positionen${j.rebalanceTrades?.length ? `, ${j.rebalanceTrades.length} Umschichtungen` : ""}, €${monthlyBudget}/M` };
       _debugListeners.forEach(fn => fn([..._debugLog]));
       const ts2 = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
       j.plan.forEach(p => {
         const prioIcon = p.priority === "hoch" ? "▲" : p.priority === "mittel" ? "▶" : "▼";
         debugPush({ ts: ts2, label: `${prioIcon} ${p.ticker}: €${p.monthlyAmount?.toFixed(2)}/M (${p.percentage}%) — ${p.reason}`, status: "ok", code: 200, tokens: 0 });
       });
+      if (j.rebalanceTrades?.length > 0) {
+        j.rebalanceTrades.forEach(t => {
+          debugPush({ ts: ts2, label: `⇄ ${t.fromTicker} → ${t.toTicker}: €${t.amount?.toFixed(2)} — ${t.reason}`, status: "ok", code: 200, tokens: 0 });
+        });
+      }
       if (j.extraAllocations?.length > 0) {
         j.extraAllocations.forEach(a => {
           debugPush({ ts: ts2, label: `★ Sonder: ${a.ticker} €${a.amount?.toFixed(2)} — ${a.reason}`, status: "ok", code: 200, tokens: 0 });
@@ -2366,6 +2374,18 @@ function App() {
               React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, `DCA-Plan: €${dcaPlan.monthlyTotal?.toFixed(2) || "?"}/Monat × ${dcaPlan.months || "?"} Monate`),
               React.createElement("span", { className: "m", style: { fontSize: 11, color: X.green, fontWeight: 600 } }, `Σ €${((dcaPlan.monthlyTotal || 0) * (dcaPlan.months || 0)).toFixed(2)}`)
             ),
+            dcaPlan.rebalanceTrades?.length > 0 && (() => {
+              const rebalanceNet = {};
+              dcaPlan.rebalanceTrades.forEach(t => {
+                rebalanceNet[t.fromTicker] = (rebalanceNet[t.fromTicker] || 0) - t.amount;
+                rebalanceNet[t.toTicker] = (rebalanceNet[t.toTicker] || 0) + t.amount;
+              });
+              const adjustedTotal = dcaPlan.plan.reduce((s, p) => s + (p.monthlyAmount || 0) + (rebalanceNet[p.ticker] || 0), 0);
+              return React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, padding: "6px 10px", background: `${X.cyan}11`, borderRadius: 8, border: `1px solid ${X.cyan}22` } },
+                React.createElement("span", { style: { fontSize: 11, color: X.cyan } }, "Nach Umschichtung:"),
+                React.createElement("span", { className: "m", style: { fontSize: 12, fontWeight: 700, color: X.cyan } }, `€${adjustedTotal.toFixed(2)}/Monat (Σ €${(adjustedTotal * (dcaPlan.months || 0)).toFixed(2)})`)
+              );
+            })(),
             React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: 0 } }, dcaPlan.summary)
           ),
 
@@ -2394,6 +2414,31 @@ function App() {
                   React.createElement("span", { className: "m", style: { fontSize: 10, color: "#475569", flexShrink: 0, marginLeft: 8 } }, `${p.percentage}%`)
                 ),
                 expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, p.detail)
+              );
+            })
+          ),
+
+          /* Rebalance Trades */
+          dcaPlan.rebalanceTrades?.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X.cyan}44`, overflow: "hidden", marginBottom: 8 } },
+            React.createElement("div", { style: { padding: "10px 15px", borderBottom: "1px solid #1e293b" } },
+              React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.cyan } }, "Umschichtungs-Vorschläge")
+            ),
+            dcaPlan.rebalanceTrades.map((t, i) => {
+              const expanded = dcaDetail === `rebal-${i}`;
+              return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < dcaPlan.rebalanceTrades.length - 1 ? "1px solid #1e293b22" : "none" } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                    React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.red } }, t.fromTicker),
+                    React.createElement("span", { style: { fontSize: 11, color: X.cyan } }, "→"),
+                    React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.green } }, t.toTicker)
+                  ),
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                    React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.cyan } }, `€${t.amount?.toFixed(2)}`),
+                    t.detail && React.createElement("button", { onClick: () => setDcaDetail(expanded ? null : `rebal-${i}`), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 6, color: expanded ? X.cyan : "#64748b", fontSize: 11, flexShrink: 0 } }, "ⓘ")
+                  )
+                ),
+                React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, t.reason),
+                expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
               );
             })
           ),
