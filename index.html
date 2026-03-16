@@ -34,7 +34,10 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('sw.js').catch(() => {});
+        navigator.serviceWorker.register('sw.js').then(reg => {
+          // Check for SW updates every 60 seconds
+          setInterval(() => reg.update().catch(() => {}), 60000);
+        }).catch(() => {});
       });
     }
   </script>
