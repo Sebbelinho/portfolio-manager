@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 23:42 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 23:53 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -671,7 +671,7 @@ Berücksichtige Insider-Verkäufe als Warnsignal (viele Verkäufe = vorsichtiger
 Berücksichtige den Makro-Kontext: VIX>30 = Angst = tendenziell gute Kaufgelegenheit. Invertierte Yield Curve = Rezessionsrisiko = vorsichtiger. Tech schwächer als S&P = Sektor-Rotation = Warnsignal.
 opportunityScore: 1-10 (1=alles teuer, 10=alles im Ausverkauf).
 rebalanceTrades: Umschichtungen nur wenn deutlich übergewichtete Positionen vorhanden UND untergewichtete attraktiver bewertet sind. Kann leer [] sein.
-takeProfits: Gewinnmitnahmen nur bei deutlich überbewerteten/überhitzten Positionen mit hohem P/L empfehlen. Kann leer [] sein.
+takeProfits: Gewinnmitnahmen NUR empfehlen wenn das Gesamtportfolio sich in einem Abwärtstrend befindet oder bärisches Sentiment vorherrscht (Makro-Indikatoren negativ, breiter Markt schwächelt). Bei bullischem Sentiment stattdessen Umschichtung in rebalanceTrades vorschlagen (von überhitzter Position in attraktivere umschichten). Kann leer [] sein.
 ${extraBudget > 0 ? "extraAllocations: Sonder-Nachkäufe nur bei echten Gelegenheiten. Kann leer [] sein. Nicht das gesamte Budget auf einmal ausgeben müssen." : ""}
 Alle Texte deutsch.`,
       "Du bist ein technischer Analyst und Timing-Experte mit Erfahrung in Portfolio-Management. NUR valides JSON. Kein Markdown. Keine Backticks.",
