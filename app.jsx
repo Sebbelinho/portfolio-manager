@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 01:19 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 22:11 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -748,6 +748,9 @@ rank: 1 = zuerst verkaufen, höchste Zahl = zuletzt verkaufen. ALLE Aktien müss
 }
 
 async function doDCAPlan(stockList, totalBudget, months, extraBudget, fmpData, insiderDataMap, timingData, analysisData, macroData, marketData, eurUsdRate) {
+  const ts0 = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  debugPush({ ts: ts0, label: `DCA-Plan Start: ${stockList.length} Aktien, Budget €${totalBudget}, ${months}M`, status: "pending", tokens: 0 });
+  const startIdx = _debugLog.length - 1;
   const stockInfo = stockList.map(s => {
     let info = `${s.ticker} (${s.name}, Sektor: ${s.sector}, Typ: ${s.type === "capex" ? "AI-Infrastruktur" : "Andere"}, Sensitivität: ${s.sensitivity}, Moat: ${s.moat}, Investiert: €${s.cost.toFixed(2)}`;
     if (s.purchaseDate) {
@@ -855,6 +858,7 @@ Alle Texte auf Deutsch.`,
       if (j.warnings) j.warnings = j.warnings.map(cleanText);
       if (j.rebalanceHints) j.rebalanceHints = j.rebalanceHints.map(cleanText);
       if (j.extraAllocations) j.extraAllocations = j.extraAllocations.map(a => ({ ...a, reason: cleanText(a.reason), detail: a.detail ? cleanText(a.detail) : null }));
+      _debugLog[startIdx] = { ..._debugLog[startIdx], status: "ok" };
       _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: `DCA-Plan: ${j.plan.length} Positionen, €${monthlyBudget}/M` };
       _debugListeners.forEach(fn => fn([..._debugLog]));
       const ts2 = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
@@ -869,10 +873,12 @@ Alle Texte auf Deutsch.`,
       }
       return j;
     }
+    _debugLog[startIdx] = { ..._debugLog[startIdx], status: "error", detail: "Kein gültiger Plan" };
     _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: 0, detail: "Kein gültiger Plan in Antwort" };
     _debugListeners.forEach(fn => fn([..._debugLog]));
     return null;
   } catch (e) {
+    _debugLog[startIdx] = { ..._debugLog[startIdx], status: "error", detail: e.message };
     _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: 0, detail: e.message };
     _debugListeners.forEach(fn => fn([..._debugLog]));
     return null;
@@ -2335,9 +2341,16 @@ function App() {
             if (!budget || budget <= 0 || !mo || mo <= 0) return;
             if (!checkKeys()) return;
             setBusyDca(true);
-            const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate);
-            setDcaPlan(plan);
-            setBusyDca(false);
+            try {
+              const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate);
+              setDcaPlan(plan);
+            } catch (e) {
+              const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+              debugPush({ ts, label: `DCA-Plan Fehler: ${e.message}`, status: "error", code: 0, detail: e.message });
+              console.error("DCA Plan error:", e);
+            } finally {
+              setBusyDca(false);
+            }
           }, disabled: busyDca || !dcaBudget || !dcaMonths || stocks.length === 0, style: {
             width: "100%", padding: 11, borderRadius: 10, border: "none", cursor: busyDca ? "default" : "pointer",
             fontSize: 13, fontWeight: 700, fontFamily: "inherit",
