@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 22:59 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 23:15 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -595,8 +595,18 @@ Nutze die Makro-Daten für Zinsumfeld-Alert: grün=stabile/fallende Zinsen, gelb
   }
 }
 
-async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap, macroData, marketData) {
-  const stockInfo = stockList.map(s => `${s.ticker} (${s.name}, Sektor: ${s.sector}, Kaufpreis: €${s.cost.toFixed(2)})`).join("; ");
+async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap, macroData, marketData, extraBudget, dcaMonths, eurUsdRate) {
+  const stockInfo = stockList.map(s => {
+    let info = `${s.ticker} (${s.name}, Sektor: ${s.sector}, Investiert: €${s.cost.toFixed(2)}`;
+    if (s.pricePerShare && fmpData[s.ticker]?.price && eurUsdRate) {
+      const curEur = fmpData[s.ticker].price * eurUsdRate;
+      const plPct = ((curEur - s.pricePerShare) / s.pricePerShare * 100).toFixed(1);
+      info += `, Ø Kaufpreis: €${s.pricePerShare.toFixed(2)}, Aktuell: €${curEur.toFixed(2)}, P/L: ${plPct}%`;
+    }
+    if (s.sensitivity) info += `, Sens: ${s.sensitivity}`;
+    if (s.moat) info += `, Moat: ${s.moat}`;
+    return info + ")";
+  }).join("; ");
 
   let fmpBlock = "";
   if (fmpData && Object.keys(fmpData).length > 0) {
@@ -644,23 +654,31 @@ async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap, m
 Aktuelle Kursdaten: ${JSON.stringify(priceData)}${fmpBlock}${insiderBlock}${macroTimingBlock}
 
 Für JEDE Aktie: Bewerte ob der aktuelle Kurs eine Nachkaufgelegenheit, Halteposition, oder Gewinnmitnahme-Kandidat ist.
+${extraBudget > 0 ? `\nSONDER-VERMÖGEN: €${extraBudget.toFixed(2)} verfügbar für DCA-unabhängige Nachkäufe über ${dcaMonths || 12} Monate.\nEmpfehle konkrete Nachkäufe NUR wenn aktuell wirklich attraktive Gelegenheiten bestehen. Das Budget muss NICHT sofort ausgegeben werden — es kann über den gesamten Zeitraum verteilt werden, zu Beginn, am Ende, oder alles auf einmal, je nach Marktlage. Leeres Array [] wenn aktuell nichts attraktiv genug ist.` : ""}
 
 Antworte NUR mit validem JSON:
-{"summary":"1-2 Sätze Gesamteinschätzung deutsch","stocks":[{"ticker":"XXX","action":"nachkaufen|halten|teilverkauf","signal":"strong_buy|buy|hold|take_profit|sell","reason":"1 Satz deutsch","fromHigh":"Abstand vom Hoch in %","momentum":"positiv|neutral|negativ"}],"dcaAdvice":"Empfehlung deutsch","opportunityScore":7}
+{"summary":"1-2 Sätze Gesamteinschätzung deutsch","stocks":[{"ticker":"XXX","action":"nachkaufen|halten|teilverkauf","signal":"strong_buy|buy|hold|take_profit|sell","reason":"1 Satz deutsch","fromHigh":"Abstand vom Hoch in %","momentum":"positiv|neutral|negativ"}],"dcaAdvice":"Empfehlung deutsch","opportunityScore":7${extraBudget > 0 ? ',"extraAllocations":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze Begründung deutsch"}]' : ""},"rebalanceTrades":[{"fromTicker":"AAA","toTicker":"BBB","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze Begründung deutsch"}],"takeProfits":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze Begründung deutsch"}]}
 
 WICHTIG: Übernimm fromHigh exakt aus den Marktdaten oben. Nicht selbst schätzen.
 Berücksichtige Insider-Verkäufe als Warnsignal (viele Verkäufe = vorsichtiger bei Nachkauf-Empfehlung).
 Berücksichtige den Makro-Kontext: VIX>30 = Angst = tendenziell gute Kaufgelegenheit. Invertierte Yield Curve = Rezessionsrisiko = vorsichtiger. Tech schwächer als S&P = Sektor-Rotation = Warnsignal.
-opportunityScore: 1-10 (1=alles teuer, 10=alles im Ausverkauf). Alle Texte deutsch.`,
-      "Du bist ein technischer Analyst und Timing-Experte. NUR valides JSON. Kein Markdown. Keine Backticks.",
+opportunityScore: 1-10 (1=alles teuer, 10=alles im Ausverkauf).
+rebalanceTrades: Umschichtungen nur wenn deutlich übergewichtete Positionen vorhanden UND untergewichtete attraktiver bewertet sind. Kann leer [] sein.
+takeProfits: Gewinnmitnahmen nur bei deutlich überbewerteten/überhitzten Positionen mit hohem P/L empfehlen. Kann leer [] sein.
+${extraBudget > 0 ? "extraAllocations: Sonder-Nachkäufe nur bei echten Gelegenheiten. Kann leer [] sein. Nicht das gesamte Budget auf einmal ausgeben müssen." : ""}
+Alle Texte deutsch.`,
+      "Du bist ein technischer Analyst und Timing-Experte mit Erfahrung in Portfolio-Management. NUR valides JSON. Kein Markdown. Keine Backticks.",
       false,
-      2500
+      3000
     );
     const j = extractJSON(raw);
     if (j && j.stocks) {
       if (j.summary) j.summary = cleanText(j.summary);
       if (j.dcaAdvice) j.dcaAdvice = cleanText(j.dcaAdvice);
       if (j.stocks) j.stocks = j.stocks.map(s => ({ ...s, reason: cleanText(s.reason) }));
+      if (j.extraAllocations) j.extraAllocations = j.extraAllocations.map(a => ({ ...a, reason: cleanText(a.reason), detail: a.detail ? cleanText(a.detail) : null }));
+      if (j.rebalanceTrades) j.rebalanceTrades = j.rebalanceTrades.map(t => ({ ...t, reason: cleanText(t.reason), detail: t.detail ? cleanText(t.detail) : null }));
+      if (j.takeProfits) j.takeProfits = j.takeProfits.map(t => ({ ...t, reason: cleanText(t.reason), detail: t.detail ? cleanText(t.detail) : null }));
       return j;
     }
     return null;
@@ -826,7 +844,6 @@ BUDGET & ZEITRAUM:
 - Verbleibendes Budget: €${remainingBudget.toFixed(2)}
 - Zeitraum: ${months} Monate
 - Monatliches Budget: €${monthlyBudget}
-${extraBudget > 0 ? `- Verfügbares Sonder-Nachkauf-Budget: €${extraBudget.toFixed(2)} (einmalig, NUR einsetzen wenn aktuell wirklich attraktive Nachkauf-Chancen bestehen)` : ""}
 
 PORTFOLIO:
 ${stockInfo}${fmpBlock}${insiderBlock}${macroBlock}${timingBlock}${analysisBlock}
@@ -841,14 +858,12 @@ Erstelle einen konkreten, monatlichen DCA-Plan. Berücksichtige:
 6. Makro-Umfeld — Zinsumfeld und Marktlage einbeziehen
 7. Sektor-Diversifikation — Klumpenrisiko vermeiden
 8. Umschichtungen: Wenn Positionen deutlich übergewichtet sind und gleichzeitig untergewichtete Positionen attraktiver bewertet sind, schlage konkrete Umschichtungen vor (Verkauf X € von Aktie A → Kauf Aktie B). Nur vorschlagen wenn es wirklich sinnvoll ist — nicht erzwingen. Das Array kann leer [] sein.
-${extraBudget > 0 ? "9. Sonder-Nachkauf-Budget: Setze es NUR ein, wenn aktuell wirklich attraktive Chancen bestehen (z.B. deutlich unterbewertet, starkes Kaufsignal, Insider-Käufe). Wenn keine überzeugenden Gelegenheiten vorliegen, empfehle explizit das Budget zurückzuhalten. Es muss NICHT das gesamte Budget ausgegeben werden — nur so viel wie die aktuelle Marktlage rechtfertigt (0-3 Positionen, Teilbeträge erlaubt)." : ""}
 
 Antworte NUR mit validem JSON:
-{"summary":"2-3 Sätze Gesamtstrategie deutsch","monthlyTotal":${monthlyBudget},"months":${months},"plan":[{"ticker":"XXX","name":"Name","monthlyAmount":100,"percentage":10,"reason":"1 Satz deutsch","detail":"3-5 Sätze ausführliche Begründung deutsch: Bewertung, Timing, Gewichtung, Risiko, Makro-Einfluss","priority":"hoch|mittel|niedrig"}],"rebalanceTrades":[{"fromTicker":"AAA","toTicker":"BBB","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze Begründung deutsch"}]${extraBudget > 0 ? ',"extraAllocations":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze ausführliche Begründung deutsch"}]' : ""},"warnings":["Warnung1 deutsch"],"rebalanceHints":["Hinweis1 deutsch"]}
+{"summary":"2-3 Sätze Gesamtstrategie deutsch","monthlyTotal":${monthlyBudget},"months":${months},"plan":[{"ticker":"XXX","name":"Name","monthlyAmount":100,"percentage":10,"reason":"1 Satz deutsch","detail":"3-5 Sätze ausführliche Begründung deutsch: Bewertung, Timing, Gewichtung, Risiko, Makro-Einfluss","priority":"hoch|mittel|niedrig"}],"rebalanceTrades":[{"fromTicker":"AAA","toTicker":"BBB","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze Begründung deutsch"}],"warnings":["Warnung1 deutsch"],"rebalanceHints":["Hinweis1 deutsch"]}
 
 monthlyAmount = Euro-Betrag pro Monat. percentage = Anteil am Monatsbudget. Die Summe aller monthlyAmount MUSS exakt €${monthlyBudget} ergeben.
 WICHTIG zu rebalanceTrades: Nur vorschlagen wenn eine Position DEUTLICH übergewichtet ist UND eine untergewichtete Position attraktiver bewertet ist. fromTicker=Verkauf, toTicker=Kauf, amount=Euro-Betrag der Umschichtung. Das Array kann leer [] sein wenn keine Umschichtung sinnvoll ist.
-${extraBudget > 0 ? "WICHTIG zu extraAllocations: Das Array MUSS leer [] sein wenn aktuell keine wirklich attraktiven Nachkauf-Chancen bestehen. Nur befüllen bei echten Gelegenheiten (deutlich unterbewertet, starkes Kaufsignal etc.). Es muss NICHT das gesamte Sonder-Budget ausgegeben werden — Teilbeträge sind erlaubt." : ""}
 Alle Texte auf Deutsch.`,
       "Du bist ein erfahrener Portfolio-Manager und professioneller Aktienhändler mit über 20 Jahren Erfahrung im institutionellen Asset Management. Du spezialisierst dich auf systematische DCA-Strategien für Growth- und Technologie-Portfolios. Deine Empfehlungen sind datengetrieben, präzise und berücksichtigen sowohl Fundamental- als auch Makro-Faktoren. NUR valides JSON. Kein Markdown. Keine Backticks.",
       false,
@@ -860,7 +875,6 @@ Alle Texte auf Deutsch.`,
       j.plan = j.plan.map(p => ({ ...p, reason: cleanText(p.reason), detail: p.detail ? cleanText(p.detail) : null }));
       if (j.warnings) j.warnings = j.warnings.map(cleanText);
       if (j.rebalanceHints) j.rebalanceHints = j.rebalanceHints.map(cleanText);
-      if (j.extraAllocations) j.extraAllocations = j.extraAllocations.map(a => ({ ...a, reason: cleanText(a.reason), detail: a.detail ? cleanText(a.detail) : null }));
       if (j.rebalanceTrades) j.rebalanceTrades = j.rebalanceTrades.map(t => ({ ...t, reason: cleanText(t.reason), detail: t.detail ? cleanText(t.detail) : null }));
       _debugLog[startIdx] = { ..._debugLog[startIdx], status: "ok" };
       _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: `DCA-Plan: ${j.plan.length} Positionen${j.rebalanceTrades?.length ? `, ${j.rebalanceTrades.length} Umschichtungen` : ""}, €${monthlyBudget}/M` };
@@ -873,11 +887,6 @@ Alle Texte auf Deutsch.`,
       if (j.rebalanceTrades?.length > 0) {
         j.rebalanceTrades.forEach(t => {
           debugPush({ ts: ts2, label: `⇄ ${t.fromTicker} → ${t.toTicker}: €${t.amount?.toFixed(2)} — ${t.reason}`, status: "ok", code: 200, tokens: 0 });
-        });
-      }
-      if (j.extraAllocations?.length > 0) {
-        j.extraAllocations.forEach(a => {
-          debugPush({ ts: ts2, label: `★ Sonder: ${a.ticker} €${a.amount?.toFixed(2)} — ${a.reason}`, status: "ok", code: 200, tokens: 0 });
         });
       }
       return j;
@@ -1568,7 +1577,7 @@ function App() {
     for (const [ticker, data] of Object.entries(lPos)) {
       priceData[ticker] = { sentiment: data.sentiment, summary: (data.summary || "").slice(0, 200) };
     }
-    const tim = await doTimingAnalysis(priceData, stocks, fmpData, lInsiderData, lMacro, lMarket);
+    const tim = await doTimingAnalysis(priceData, stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate);
     setTiming(tim);
     addLog("✓ Timing: Score " + (tim?.opportunityScore || "?") + "/10");
 
@@ -1619,7 +1628,7 @@ function App() {
     }
     await delay(API_DELAY);
     setTimingStep("Timing-Bewertung…");
-    const tim = await doTimingAnalysis(priceResults, stocks, fmpData, lInsiderData, lMacro, lMarket);
+    const tim = await doTimingAnalysis(priceResults, stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate);
     setTiming(tim);
     setBusyTiming(false);
     setTimingStep("");
@@ -2320,7 +2329,76 @@ function App() {
                 )
               )
             );
-          })
+          }),
+
+          /* Sonder-Nachkäufe */
+          timing.extraAllocations?.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X.green}44`, overflow: "hidden", marginBottom: 10, marginTop: 4 } },
+            React.createElement("div", { style: { padding: "10px 15px", borderBottom: "1px solid #1e293b", display: "flex", justifyContent: "space-between", alignItems: "center" } },
+              React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.green } }, "Sonder-Nachkäufe"),
+              React.createElement("span", { className: "m", style: { fontSize: 10, color: X.green } }, `Σ €${timing.extraAllocations.reduce((s, a) => s + (a.amount || 0), 0).toFixed(2)}`)
+            ),
+            timing.extraAllocations.map((a, i) => {
+              const expanded = dcaDetail === `tex-${i}`;
+              return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < timing.extraAllocations.length - 1 ? "1px solid #1e293b22" : "none" } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
+                  React.createElement("span", { style: { fontSize: 12, fontWeight: 600 } }, a.ticker),
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                    React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.green } }, `€${a.amount?.toFixed(2)}`),
+                    a.detail && React.createElement("button", { onClick: () => setDcaDetail(expanded ? null : `tex-${i}`), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 6, color: expanded ? X.green : "#64748b", fontSize: 11, flexShrink: 0 } }, "ⓘ")
+                  )
+                ),
+                React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, a.reason),
+                expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, a.detail)
+              );
+            })
+          ),
+
+          /* Umschichtungen */
+          timing.rebalanceTrades?.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X.cyan}44`, overflow: "hidden", marginBottom: 10 } },
+            React.createElement("div", { style: { padding: "10px 15px", borderBottom: "1px solid #1e293b" } },
+              React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.cyan } }, "Umschichtungs-Vorschläge")
+            ),
+            timing.rebalanceTrades.map((t, i) => {
+              const expanded = dcaDetail === `trebal-${i}`;
+              return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < timing.rebalanceTrades.length - 1 ? "1px solid #1e293b22" : "none" } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+                    React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.red } }, t.fromTicker),
+                    React.createElement("span", { style: { fontSize: 11, color: X.cyan } }, "→"),
+                    React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.green } }, t.toTicker)
+                  ),
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                    React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.cyan } }, `€${t.amount?.toFixed(2)}`),
+                    t.detail && React.createElement("button", { onClick: () => setDcaDetail(expanded ? null : `trebal-${i}`), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 6, color: expanded ? X.cyan : "#64748b", fontSize: 11, flexShrink: 0 } }, "ⓘ")
+                  )
+                ),
+                React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, t.reason),
+                expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
+              );
+            })
+          ),
+
+          /* Gewinnmitnahmen */
+          timing.takeProfits?.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X.orange}44`, overflow: "hidden", marginBottom: 10 } },
+            React.createElement("div", { style: { padding: "10px 15px", borderBottom: "1px solid #1e293b" } },
+              React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.orange } }, "Gewinnmitnahmen")
+            ),
+            timing.takeProfits.map((t, i) => {
+              const expanded = dcaDetail === `tprofit-${i}`;
+              return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < timing.takeProfits.length - 1 ? "1px solid #1e293b22" : "none" } },
+                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
+                  React.createElement("span", { style: { fontSize: 12, fontWeight: 600 } }, t.ticker),
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+                    React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.orange } }, `€${t.amount?.toFixed(2)}`),
+                    t.detail && React.createElement("button", { onClick: () => setDcaDetail(expanded ? null : `tprofit-${i}`), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 6, color: expanded ? X.orange : "#64748b", fontSize: 11, flexShrink: 0 } }, "ⓘ")
+                  )
+                ),
+                React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, t.reason),
+                expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
+              );
+            })
+          )
+
         ) : React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 28, textAlign: "center" } },
           React.createElement("div", { style: { fontSize: 28, marginBottom: 10 } }, "⚡"),
           React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 5 } }, "Starte die Live-Recherche"),
@@ -2343,7 +2421,7 @@ function App() {
             )
           ),
           React.createElement("div", { style: { marginBottom: 10 } },
-            React.createElement("label", { style: { fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 } }, "Sonder-Nachkauf-Budget (€, optional)"),
+            React.createElement("label", { style: { fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 } }, "Sonder-Vermögen (€, optional — wird im Timing-Tab genutzt)"),
             React.createElement("input", { value: dcaExtra, onChange: e => setDcaExtra(e.target.value), type: "number", placeholder: "Einmalig für attraktive Gelegenheiten", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: "100%" } })
           ),
           dcaBudget && dcaMonths && (() => { const invested = stocks.reduce((s, st) => s + st.cost, 0); const remaining = Math.max(0, parseFloat(dcaBudget) - invested); const monthly = (remaining / parseInt(dcaMonths)).toFixed(2); return React.createElement("div", { className: "m", style: { fontSize: 11, color: "#64748b", marginBottom: 10 } }, `Bereits investiert: €${invested.toLocaleString("de-DE", { minimumFractionDigits: 2 })} · Verbleibend: €${remaining.toLocaleString("de-DE", { minimumFractionDigits: 2 })} → €${monthly}/Monat${dcaExtra ? ` + €${parseFloat(dcaExtra).toFixed(2)} Sonder-Budget` : ""}`); })(),
@@ -2444,27 +2522,6 @@ function App() {
                 ),
                 React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, t.reason),
                 expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
-              );
-            })
-          ),
-
-          /* Extra Allocations */
-          dcaPlan.extraAllocations?.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X.indigo}44`, overflow: "hidden", marginBottom: 8 } },
-            React.createElement("div", { style: { padding: "10px 15px", borderBottom: "1px solid #1e293b" } },
-              React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.purple } }, "Sonder-Nachkäufe (einmalig)")
-            ),
-            dcaPlan.extraAllocations.map((a, i) => {
-              const expanded = dcaDetail === `extra-${i}`;
-              return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < dcaPlan.extraAllocations.length - 1 ? "1px solid #1e293b22" : "none" } },
-                React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
-                  React.createElement("span", { style: { fontSize: 12, fontWeight: 600 } }, a.ticker),
-                  React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-                    React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.purple } }, `€${a.amount?.toFixed(2)}`),
-                    a.detail && React.createElement("button", { onClick: () => setDcaDetail(expanded ? null : `extra-${i}`), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 6, color: expanded ? X.purple : "#64748b", fontSize: 11, flexShrink: 0 } }, "ⓘ")
-                  )
-                ),
-                React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, a.reason),
-                expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, a.detail)
               );
             })
           ),
