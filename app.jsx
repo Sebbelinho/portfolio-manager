@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 22:25 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 22:40 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -826,7 +826,7 @@ BUDGET & ZEITRAUM:
 - Verbleibendes Budget: €${remainingBudget.toFixed(2)}
 - Zeitraum: ${months} Monate
 - Monatliches Budget: €${monthlyBudget}
-${extraBudget > 0 ? `- Zusätzliches Sonder-Nachkauf-Budget: €${extraBudget.toFixed(2)} (einmalig, für besonders attraktive Gelegenheiten)` : ""}
+${extraBudget > 0 ? `- Verfügbares Sonder-Nachkauf-Budget: €${extraBudget.toFixed(2)} (einmalig, NUR einsetzen wenn aktuell wirklich attraktive Nachkauf-Chancen bestehen)` : ""}
 
 PORTFOLIO:
 ${stockInfo}${fmpBlock}${insiderBlock}${macroBlock}${timingBlock}${analysisBlock}
@@ -840,12 +840,13 @@ Erstelle einen konkreten, monatlichen DCA-Plan. Berücksichtige:
 5. Insider-Aktivität — viele Insider-Käufe = positiv, viele Verkäufe = vorsichtiger
 6. Makro-Umfeld — Zinsumfeld und Marktlage einbeziehen
 7. Sektor-Diversifikation — Klumpenrisiko vermeiden
-${extraBudget > 0 ? "8. Verteile das Sonder-Budget gezielt auf die 1-3 attraktivsten Nachkauf-Gelegenheiten" : ""}
+${extraBudget > 0 ? "8. Sonder-Nachkauf-Budget: Setze es NUR ein, wenn aktuell wirklich attraktive Chancen bestehen (z.B. deutlich unterbewertet, starkes Kaufsignal, Insider-Käufe). Wenn keine überzeugenden Gelegenheiten vorliegen, empfehle explizit das Budget zurückzuhalten. Es muss NICHT das gesamte Budget ausgegeben werden — nur so viel wie die aktuelle Marktlage rechtfertigt (0-3 Positionen, Teilbeträge erlaubt)." : ""}
 
 Antworte NUR mit validem JSON:
 {"summary":"2-3 Sätze Gesamtstrategie deutsch","monthlyTotal":${monthlyBudget},"months":${months},"plan":[{"ticker":"XXX","name":"Name","monthlyAmount":100,"percentage":10,"reason":"1 Satz deutsch","detail":"3-5 Sätze ausführliche Begründung deutsch: Bewertung, Timing, Gewichtung, Risiko, Makro-Einfluss","priority":"hoch|mittel|niedrig"}]${extraBudget > 0 ? ',"extraAllocations":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze ausführliche Begründung deutsch"}]' : ""},"warnings":["Warnung1 deutsch"],"rebalanceHints":["Hinweis1 deutsch"]}
 
 monthlyAmount = Euro-Betrag pro Monat. percentage = Anteil am Monatsbudget. Die Summe aller monthlyAmount MUSS exakt €${monthlyBudget} ergeben.
+${extraBudget > 0 ? "WICHTIG zu extraAllocations: Das Array MUSS leer [] sein wenn aktuell keine wirklich attraktiven Nachkauf-Chancen bestehen. Nur befüllen bei echten Gelegenheiten (deutlich unterbewertet, starkes Kaufsignal etc.). Es muss NICHT das gesamte Sonder-Budget ausgegeben werden — Teilbeträge sind erlaubt." : ""}
 Alle Texte auf Deutsch.`,
       "Du bist ein erfahrener Portfolio-Manager und professioneller Aktienhändler mit über 20 Jahren Erfahrung im institutionellen Asset Management. Du spezialisierst dich auf systematische DCA-Strategien für Growth- und Technologie-Portfolios. Deine Empfehlungen sind datengetrieben, präzise und berücksichtigen sowohl Fundamental- als auch Makro-Faktoren. NUR valides JSON. Kein Markdown. Keine Backticks.",
       false,
