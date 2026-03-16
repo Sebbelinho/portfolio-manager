@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 00:51 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 01:06 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -806,18 +806,20 @@ async function doDCAPlan(stockList, totalBudget, months, extraBudget, fmpData, i
   }
 
   const totalInvested = stockList.reduce((s, st) => s + st.cost, 0);
-  const monthlyBudget = (totalBudget / months).toFixed(2);
+  const remainingBudget = Math.max(0, totalBudget - totalInvested);
+  const monthlyBudget = (remainingBudget / months).toFixed(2);
 
   try {
     const raw = await callAPI(
       `Du erstellst einen Dollar-Cost-Averaging (DCA) Plan für ein Portfolio.
 
 BUDGET & ZEITRAUM:
-- Gesamtbudget: €${totalBudget.toFixed(2)}
+- Ziel-Allokation (gesamt): €${totalBudget.toFixed(2)}
+- Bereits investiert: €${totalInvested.toFixed(2)}
+- Verbleibendes Budget: €${remainingBudget.toFixed(2)}
 - Zeitraum: ${months} Monate
 - Monatliches Budget: €${monthlyBudget}
 ${extraBudget > 0 ? `- Zusätzliches Sonder-Nachkauf-Budget: €${extraBudget.toFixed(2)} (einmalig, für besonders attraktive Gelegenheiten)` : ""}
-- Bereits investiert (gesamt): €${totalInvested.toFixed(2)}
 
 PORTFOLIO:
 ${stockInfo}${fmpBlock}${insiderBlock}${macroBlock}${timingBlock}${analysisBlock}
@@ -2291,7 +2293,7 @@ function App() {
           React.createElement("div", { style: { fontSize: 13, fontWeight: 600, marginBottom: 10 } }, "DCA-Plan erstellen"),
           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 } },
             React.createElement("div", null,
-              React.createElement("label", { style: { fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 } }, "Gesamt-Budget (€)"),
+              React.createElement("label", { style: { fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 } }, "Ziel-Allokation (€)"),
               React.createElement("input", { value: dcaBudget, onChange: e => setDcaBudget(e.target.value), type: "number", placeholder: "z.B. 12000", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: "100%" } })
             ),
             React.createElement("div", null,
@@ -2303,7 +2305,7 @@ function App() {
             React.createElement("label", { style: { fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 } }, "Sonder-Nachkauf-Budget (€, optional)"),
             React.createElement("input", { value: dcaExtra, onChange: e => setDcaExtra(e.target.value), type: "number", placeholder: "Einmalig für attraktive Gelegenheiten", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: "100%" } })
           ),
-          dcaBudget && dcaMonths && React.createElement("div", { className: "m", style: { fontSize: 11, color: "#64748b", marginBottom: 10 } }, `→ €${(parseFloat(dcaBudget) / parseInt(dcaMonths)).toFixed(2)} / Monat${dcaExtra ? ` + €${parseFloat(dcaExtra).toFixed(2)} Sonder-Budget` : ""}`),
+          dcaBudget && dcaMonths && (() => { const invested = stocks.reduce((s, st) => s + st.cost, 0); const remaining = Math.max(0, parseFloat(dcaBudget) - invested); const monthly = (remaining / parseInt(dcaMonths)).toFixed(2); return React.createElement("div", { className: "m", style: { fontSize: 11, color: "#64748b", marginBottom: 10 } }, `Bereits investiert: €${invested.toLocaleString("de-DE", { minimumFractionDigits: 2 })} · Verbleibend: €${remaining.toLocaleString("de-DE", { minimumFractionDigits: 2 })} → €${monthly}/Monat${dcaExtra ? ` + €${parseFloat(dcaExtra).toFixed(2)} Sonder-Budget` : ""}`); })(),
           React.createElement("button", { onClick: async () => {
             const budget = parseFloat(dcaBudget);
             const mo = parseInt(dcaMonths);
