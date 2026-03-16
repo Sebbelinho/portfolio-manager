@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ai-monitor-v8';
+const CACHE_NAME = 'ai-monitor-v9';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -16,6 +16,17 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+
+  // Same-origin requests: always bypass HTTP cache to get fresh content
+  if (url.origin === self.location.origin) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' }).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // External requests: normal fetch
   event.respondWith(
     fetch(event.request).catch(() => caches.match(event.request))
   );
