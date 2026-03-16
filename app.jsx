@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 23:34 Uhr";
+const BUILD_TIMESTAMP = "16.03.2026, 23:42 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -2339,12 +2339,12 @@ function App() {
           }),
 
           /* Sonder-Nachkäufe */
-          timing.extraAllocations?.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X.green}44`, overflow: "hidden", marginBottom: 10, marginTop: 4 } },
-            React.createElement("div", { style: { padding: "10px 15px", borderBottom: "1px solid #1e293b", display: "flex", justifyContent: "space-between", alignItems: "center" } },
+          React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${timing.extraAllocations?.length > 0 ? X.green + "44" : "#1e293b"}`, overflow: "hidden", marginBottom: 10, marginTop: 4 } },
+            React.createElement("div", { style: { padding: "10px 15px", borderBottom: timing.extraAllocations?.length > 0 ? "1px solid #1e293b" : "none", display: "flex", justifyContent: "space-between", alignItems: "center" } },
               React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.green } }, "Sonder-Nachkäufe"),
-              React.createElement("span", { className: "m", style: { fontSize: 10, color: X.green } }, `Σ €${timing.extraAllocations.reduce((s, a) => s + (a.amount || 0), 0).toFixed(2)}`)
+              timing.extraAllocations?.length > 0 && React.createElement("span", { className: "m", style: { fontSize: 10, color: X.green } }, `Σ €${timing.extraAllocations.reduce((s, a) => s + (a.amount || 0), 0).toFixed(2)}`)
             ),
-            timing.extraAllocations.map((a, i) => {
+            timing.extraAllocations?.length > 0 ? timing.extraAllocations.map((a, i) => {
               const expanded = dcaDetail === `tex-${i}`;
               return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < timing.extraAllocations.length - 1 ? "1px solid #1e293b22" : "none" } },
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
@@ -2357,15 +2357,15 @@ function App() {
                 React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, a.reason),
                 expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, a.detail)
               );
-            })
+            }) : React.createElement("div", { style: { padding: "10px 15px", fontSize: 11, color: "#475569" } }, "Kein Handlungsbedarf")
           ),
 
           /* Umschichtungen */
-          timing.rebalanceTrades?.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X.cyan}44`, overflow: "hidden", marginBottom: 10 } },
-            React.createElement("div", { style: { padding: "10px 15px", borderBottom: "1px solid #1e293b" } },
+          React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${timing.rebalanceTrades?.length > 0 ? X.cyan + "44" : "#1e293b"}`, overflow: "hidden", marginBottom: 10 } },
+            React.createElement("div", { style: { padding: "10px 15px", borderBottom: timing.rebalanceTrades?.length > 0 ? "1px solid #1e293b" : "none" } },
               React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.cyan } }, "Umschichtungs-Vorschläge")
             ),
-            timing.rebalanceTrades.map((t, i) => {
+            timing.rebalanceTrades?.length > 0 ? timing.rebalanceTrades.map((t, i) => {
               const expanded = dcaDetail === `trebal-${i}`;
               return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < timing.rebalanceTrades.length - 1 ? "1px solid #1e293b22" : "none" } },
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
@@ -2382,15 +2382,15 @@ function App() {
                 React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, t.reason),
                 expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
               );
-            })
+            }) : React.createElement("div", { style: { padding: "10px 15px", fontSize: 11, color: "#475569" } }, "Kein Handlungsbedarf")
           ),
 
           /* Gewinnmitnahmen */
-          timing.takeProfits?.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X.orange}44`, overflow: "hidden", marginBottom: 10 } },
-            React.createElement("div", { style: { padding: "10px 15px", borderBottom: "1px solid #1e293b" } },
+          React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${timing.takeProfits?.length > 0 ? X.orange + "44" : "#1e293b"}`, overflow: "hidden", marginBottom: 10 } },
+            React.createElement("div", { style: { padding: "10px 15px", borderBottom: timing.takeProfits?.length > 0 ? "1px solid #1e293b" : "none" } },
               React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.orange } }, "Gewinnmitnahmen")
             ),
-            timing.takeProfits.map((t, i) => {
+            timing.takeProfits?.length > 0 ? timing.takeProfits.map((t, i) => {
               const expanded = dcaDetail === `tprofit-${i}`;
               return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < timing.takeProfits.length - 1 ? "1px solid #1e293b22" : "none" } },
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
@@ -2403,7 +2403,7 @@ function App() {
                 React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, t.reason),
                 expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
               );
-            })
+            }) : React.createElement("div", { style: { padding: "10px 15px", fontSize: 11, color: "#475569" } }, "Kein Handlungsbedarf")
           )
 
         ) : React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 28, textAlign: "center" } },
