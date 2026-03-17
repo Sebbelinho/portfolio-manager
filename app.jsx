@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "16.03.2026, 23:53 Uhr";
+const BUILD_TIMESTAMP = "17.03.2026, 22:54 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -595,7 +595,7 @@ Nutze die Makro-Daten für Zinsumfeld-Alert: grün=stabile/fallende Zinsen, gelb
   }
 }
 
-async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap, macroData, marketData, extraBudget, dcaMonths, eurUsdRate) {
+async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap, macroData, marketData, extraBudget, dcaMonths, eurUsdRate, capexImpactData) {
   const totalInvested = stockList.reduce((sum, s) => sum + s.cost, 0);
   const stockInfo = stockList.map(s => {
     const pctOfPortfolio = totalInvested > 0 ? (s.cost / totalInvested * 100).toFixed(1) : "0";
@@ -650,6 +650,15 @@ async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap, m
     macroTimingBlock = `\n\nMakro-Kontext (exakte Daten, als Fakten verwenden):\n${parts.join("\n")}`;
   }
 
+  let capexImpactBlock = "";
+  if (capexImpactData) {
+    const parts2 = [`Gesamt: ${capexImpactData.impact} — ${capexImpactData.summary}`];
+    if (capexImpactData.guidance_changes) parts2.push(`Guidance: ${capexImpactData.guidance_changes}`);
+    if (capexImpactData.winners?.length) parts2.push(`Winners: ${capexImpactData.winners.map(w => `${w.ticker}: ${w.reason}`).join("; ")}`);
+    if (capexImpactData.losers?.length) parts2.push(`Losers: ${capexImpactData.losers.map(l => `${l.ticker}: ${l.reason}`).join("; ")}`);
+    capexImpactBlock = `\n\nCapEx-Implikation (aktuelle Hyperscaler-Earnings & Guidance-Änderungen):\n${parts2.join("\n")}`;
+  }
+
   try {
     const raw = await callAPI(
       `Du analysierst Kurs-Timing für ein Portfolio.
@@ -658,13 +667,13 @@ Gleichgewichtung wäre ${(100 / stockList.length).toFixed(1)}% pro Position.
 
 Aktien: ${stockInfo}
 
-Aktuelle Kursdaten: ${JSON.stringify(priceData)}${fmpBlock}${insiderBlock}${macroTimingBlock}
+Aktuelle Kursdaten: ${JSON.stringify(priceData)}${fmpBlock}${insiderBlock}${macroTimingBlock}${capexImpactBlock}
 
 Für JEDE Aktie: Bewerte ob der aktuelle Kurs eine Nachkaufgelegenheit, Halteposition, oder Gewinnmitnahme-Kandidat ist.
 ${extraBudget > 0 ? `\nSONDER-VERMÖGEN: €${extraBudget.toFixed(2)} verfügbar für DCA-unabhängige Nachkäufe über ${dcaMonths || 12} Monate.\nEmpfehle konkrete Nachkäufe NUR wenn aktuell wirklich attraktive Gelegenheiten bestehen. Das Budget muss NICHT sofort ausgegeben werden — es kann über den gesamten Zeitraum verteilt werden, zu Beginn, am Ende, oder alles auf einmal, je nach Marktlage. Leeres Array [] wenn aktuell nichts attraktiv genug ist.` : ""}
 
 Antworte NUR mit validem JSON:
-{"summary":"1-2 Sätze Gesamteinschätzung deutsch","stocks":[{"ticker":"XXX","action":"nachkaufen|halten|teilverkauf","signal":"strong_buy|buy|hold|take_profit|sell","reason":"1 Satz deutsch","fromHigh":"Abstand vom Hoch in %","momentum":"positiv|neutral|negativ"}],"dcaAdvice":"Empfehlung deutsch","opportunityScore":7${extraBudget > 0 ? ',"extraAllocations":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze Begründung deutsch"}]' : ""},"rebalanceTrades":[{"fromTicker":"AAA","toTicker":"BBB","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze Begründung deutsch"}],"takeProfits":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze Begründung deutsch"}]}
+{"summary":"1-2 Sätze Gesamteinschätzung deutsch","stocks":[{"ticker":"XXX","action":"nachkaufen|halten|teilverkauf","signal":"strong_buy|buy|hold|take_profit|sell","reason":"1 Satz deutsch","fromHigh":"Abstand vom Hoch in %","momentum":"positiv|neutral|negativ"}],"dcaAdvice":"Empfehlung deutsch","opportunityScore":7${extraBudget > 0 ? ',"extraAllocations":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze Begründung deutsch"}],"noExtraReason":"1 Satz warum keine Sonder-Nachkäufe empfohlen werden (nur wenn extraAllocations leer)"' : ""},"rebalanceTrades":[{"fromTicker":"AAA","toTicker":"BBB","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze Begründung deutsch"}],"noRebalanceReason":"1 Satz warum keine Umschichtungen nötig sind (nur wenn rebalanceTrades leer)","takeProfits":[{"ticker":"XXX","amount":500,"reason":"1 Satz deutsch","detail":"3-5 Sätze Begründung deutsch"}],"noTakeProfitReason":"1 Satz warum keine Gewinnmitnahmen empfohlen werden (nur wenn takeProfits leer)"}
 
 WICHTIG: Übernimm fromHigh exakt aus den Marktdaten oben. Nicht selbst schätzen.
 Berücksichtige Insider-Verkäufe als Warnsignal (viele Verkäufe = vorsichtiger bei Nachkauf-Empfehlung).
@@ -772,7 +781,7 @@ rank: 1 = zuerst verkaufen, höchste Zahl = zuletzt verkaufen. ALLE Aktien müss
   } catch { return null; }
 }
 
-async function doDCAPlan(stockList, totalBudget, months, extraBudget, fmpData, insiderDataMap, timingData, analysisData, macroData, marketData, eurUsdRate) {
+async function doDCAPlan(stockList, totalBudget, months, extraBudget, fmpData, insiderDataMap, timingData, analysisData, macroData, marketData, eurUsdRate, capexImpactData) {
   const ts0 = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   debugPush({ ts: ts0, label: `DCA-Plan Start: ${stockList.length} Aktien, Budget €${totalBudget}, ${months}M`, status: "pending", tokens: 0 });
   const startIdx = _debugLog.length - 1;
@@ -833,6 +842,15 @@ async function doDCAPlan(stockList, totalBudget, months, extraBudget, fmpData, i
     analysisBlock = `\n\nAnalyse-Status: ${analysisData.overallStatus || "n/a"}, CapEx-Trend: ${analysisData.capexTrend || "n/a"}`;
   }
 
+  let capexImpactBlock = "";
+  if (capexImpactData) {
+    const cParts = [`Impact: ${capexImpactData.impact} — ${capexImpactData.summary}`];
+    if (capexImpactData.guidance_changes) cParts.push(`Guidance-Änderungen: ${capexImpactData.guidance_changes}`);
+    if (capexImpactData.winners?.length) cParts.push(`CapEx-Winners: ${capexImpactData.winners.map(w => `${w.ticker} (${w.reason})`).join(", ")}`);
+    if (capexImpactData.losers?.length) cParts.push(`CapEx-Losers: ${capexImpactData.losers.map(l => `${l.ticker} (${l.reason})`).join(", ")}`);
+    capexImpactBlock = `\n\nAktuelle CapEx-Implikation (Hyperscaler-Earnings & Guidance):\n${cParts.join("\n")}`;
+  }
+
   const totalInvested = stockList.reduce((s, st) => s + st.cost, 0);
   const remainingBudget = Math.max(0, totalBudget - totalInvested);
   const monthlyBudget = (remainingBudget / months).toFixed(2);
@@ -853,7 +871,7 @@ BUDGET & ZEITRAUM:
 - Monatliches Budget: €${monthlyBudget}
 
 PORTFOLIO:
-${stockInfo}${fmpBlock}${insiderBlock}${macroBlock}${timingBlock}${analysisBlock}
+${stockInfo}${fmpBlock}${insiderBlock}${macroBlock}${timingBlock}${analysisBlock}${capexImpactBlock}
 
 AUFGABE:
 Erstelle einen konkreten, monatlichen DCA-Plan. Berücksichtige:
@@ -863,6 +881,7 @@ Erstelle einen konkreten, monatlichen DCA-Plan. Berücksichtige:
 4. Moat & Sensitivität — breiter Moat + niedrige Sensitivität = höherer Basisanteil
 5. Insider-Aktivität — viele Insider-Käufe = positiv, viele Verkäufe = vorsichtiger
 6. Makro-Umfeld — Zinsumfeld und Marktlage einbeziehen
+7. CapEx-Implikation — Winners stärker gewichten, Losers reduzieren, Guidance-Änderungen berücksichtigen
 7. Sektor-Diversifikation — Klumpenrisiko vermeiden
 8. Umschichtungen: Wenn Positionen deutlich übergewichtet sind und gleichzeitig untergewichtete Positionen attraktiver bewertet sind, schlage konkrete Umschichtungen vor (Verkauf X € von Aktie A → Kauf Aktie B). Nur vorschlagen wenn es wirklich sinnvoll ist — nicht erzwingen. Das Array kann leer [] sein.
 
@@ -912,6 +931,234 @@ Alle Texte auf Deutsch.`,
 
 /* ═══ COLORS ═══ */
 const X = { green: "#22c55e", yellow: "#eab308", orange: "#f97316", red: "#ef4444", purple: "#a78bfa", indigo: "#6366f1", cyan: "#22d3ee" };
+
+/* ═══ HYPERSCALER EARNINGS BANNER ═══ */
+const EARNINGS_STORE_KEY = "portfolio-monitor-earnings-dates";
+const HYPERSCALERS = ["MSFT", "GOOGL", "AMZN", "META"];
+const HYPERSCALER_NAMES = { MSFT: "Microsoft", GOOGL: "Alphabet", AMZN: "Amazon", META: "Meta" };
+
+function getDefaultEarningsDates() {
+  const now = new Date();
+  const y = now.getFullYear();
+  // Typische Earnings-Fenster: Ende Jan, Ende Apr, Ende Jul, Ende Okt
+  const windows = [
+    { month: 0, day: 29 }, // Q4 → Ende Januar
+    { month: 3, day: 30 }, // Q1 → Ende April
+    { month: 6, day: 30 }, // Q2 → Ende Juli
+    { month: 9, day: 29 }, // Q3 → Ende Oktober
+  ];
+  // Finde das nächste Fenster für jeden Hyperscaler (leicht versetzt)
+  const offsets = { MSFT: 0, GOOGL: 0, AMZN: 1, META: 0 };
+  const result = {};
+  for (const ticker of HYPERSCALERS) {
+    let found = false;
+    for (const yr of [y, y + 1]) {
+      for (const w of windows) {
+        const d = new Date(yr, w.month, w.day + (offsets[ticker] || 0));
+        if (d > now) {
+          result[ticker] = { date: d.toISOString().slice(0, 10), confirmed: false, reported: false };
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
+    }
+  }
+  return result;
+}
+
+function loadEarningsDates() {
+  try {
+    const raw = localStorage.getItem(EARNINGS_STORE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Prüfe ob Daten noch aktuell sind (nicht alle in der Vergangenheit + reported)
+      const allPast = Object.values(parsed).every(v => v.reported || new Date(v.date) < new Date(Date.now() - 14 * 86400000));
+      if (allPast) return getDefaultEarningsDates();
+      return parsed;
+    }
+  } catch {}
+  return getDefaultEarningsDates();
+}
+
+function saveEarningsDates(data) {
+  try { localStorage.setItem(EARNINGS_STORE_KEY, JSON.stringify(data)); } catch {}
+}
+
+function daysUntil(dateStr) {
+  const target = new Date(dateStr + "T23:59:59");
+  const now = new Date();
+  return Math.ceil((target - now) / 86400000);
+}
+
+function earningsPhase(dates) {
+  const allReported = Object.values(dates).every(v => v.reported);
+  if (allReported) return "allReported";
+  const days = Object.values(dates).filter(v => !v.reported).map(v => daysUntil(v.date));
+  const minDays = Math.min(...days);
+  if (minDays <= 0) return "jetzt";
+  if (minDays <= 7) return "jetzt";
+  if (minDays <= 14) return "bald";
+  if (minDays <= 30) return "aufmerksamkeit";
+  return "ruhig";
+}
+
+const PHASE_STYLES = {
+  ruhig: { bg: "#6366f108", border: "#6366f122", accent: "#6366f1", label: "Earnings-Radar" },
+  aufmerksamkeit: { bg: "#eab30812", border: "#eab30844", accent: "#eab308", label: "Earnings bald" },
+  bald: { bg: "#f9731618", border: "#f9731655", accent: "#f97316", label: "Earnings nahen!" },
+  jetzt: { bg: "#ef444422", border: "#ef444466", accent: "#ef4444", label: "Earnings-Woche!" },
+  allReported: { bg: "#ef444428", border: "#ef444488", accent: "#ef4444", label: "Analyse fällig!" },
+};
+
+async function searchEarningsDates(currentDates) {
+  const tickers = Object.keys(currentDates).filter(t => !currentDates[t].reported);
+  const names = tickers.map(t => HYPERSCALER_NAMES[t]).join(", ");
+  const raw = await callAPI(
+    `Search for the exact upcoming quarterly earnings report dates for these companies: ${names}.
+Find the specific date (day, month, year) for each company's next earnings report.
+
+Respond ONLY with raw JSON, no backticks:
+{"dates":[{"ticker":"MSFT","date":"2026-04-29","name":"Microsoft"},{"ticker":"GOOGL","date":"2026-04-29","name":"Alphabet"},{"ticker":"AMZN","date":"2026-04-30","name":"Amazon"},{"ticker":"META","date":"2026-04-29","name":"Meta"}]}
+
+Use format YYYY-MM-DD. Only include companies that have confirmed dates. If a date is not confirmed yet, use your best estimate and add "estimated":true.`,
+    "Financial analyst. Use web_search to find upcoming earnings dates. Respond with ONLY raw JSON.",
+    true,
+    500
+  );
+  const j = extractJSON(raw);
+  if (j && j.dates && Array.isArray(j.dates)) {
+    const updated = { ...currentDates };
+    for (const entry of j.dates) {
+      if (updated[entry.ticker]) {
+        updated[entry.ticker] = {
+          ...updated[entry.ticker],
+          date: entry.date,
+          confirmed: !entry.estimated,
+        };
+      }
+    }
+    return updated;
+  }
+  return null;
+}
+
+function EarningsBanner({ dates, onUpdate, busy }) {
+  const [searching, setSearching] = React.useState(false);
+  const phase = earningsPhase(dates);
+  const ps = PHASE_STYLES[phase];
+  const allReported = phase === "allReported";
+  const canSearch = phase === "aufmerksamkeit" || phase === "bald" || phase === "jetzt";
+
+  const handleSearch = async () => {
+    setSearching(true);
+    try {
+      const updated = await searchEarningsDates(dates);
+      if (updated) onUpdate(updated);
+    } catch (e) { console.error("Earnings search error:", e); }
+    setSearching(false);
+  };
+
+  const handleMarkReported = (ticker) => {
+    const updated = { ...dates, [ticker]: { ...dates[ticker], reported: true } };
+    onUpdate(updated);
+  };
+
+  const handleReset = () => {
+    onUpdate(getDefaultEarningsDates());
+  };
+
+  const sorted = Object.entries(dates).sort((a, b) => new Date(a[1].date) - new Date(b[1].date));
+  const anyConfirmed = Object.values(dates).some(v => v.confirmed);
+  const allConfirmed = Object.values(dates).filter(v => !v.reported).every(v => v.confirmed);
+
+  return React.createElement("div", {
+    style: {
+      background: ps.bg, border: `1px solid ${ps.border}`, borderRadius: 10,
+      padding: "10px 14px", marginTop: 8, marginBottom: 4,
+      transition: "all 0.4s ease",
+    }
+  },
+    // Header-Zeile
+    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
+      React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+        React.createElement("span", { style: {
+          display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: ps.accent,
+          boxShadow: `0 0 8px ${ps.accent}66`,
+          animation: (phase === "jetzt" || allReported) ? "pulse 1.5s infinite" : "none",
+        } }),
+        React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: ps.accent, textTransform: "uppercase", letterSpacing: ".05em" } }, ps.label),
+        // Bestätigungs-Status
+        !allReported && React.createElement("span", { style: {
+          fontSize: 9, padding: "2px 7px", borderRadius: 8,
+          background: allConfirmed ? `${X.green}18` : anyConfirmed ? `${X.yellow}18` : `${X.indigo}12`,
+          border: `1px solid ${allConfirmed ? X.green : anyConfirmed ? X.yellow : X.indigo}33`,
+          color: allConfirmed ? X.green : anyConfirmed ? X.yellow : "#64748b",
+          fontWeight: 600,
+        } }, allConfirmed ? "✓ Bestätigt" : anyConfirmed ? "◐ Teilw. bestätigt" : "~ Geschätzt")
+      ),
+      allReported && React.createElement("button", {
+        onClick: handleReset,
+        style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10, padding: 2, fontFamily: "inherit" }
+      }, "↻ Reset")
+    ),
+
+    // Hyperscaler-Zeilen
+    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 } },
+      sorted.map(([ticker, info]) => {
+        const days = daysUntil(info.date);
+        const isReported = info.reported;
+        const isPast = days <= 0;
+        let dayColor = "#64748b";
+        let dayText = `${days}d`;
+        if (isReported) { dayColor = X.green; dayText = "✓"; }
+        else if (isPast) { dayColor = X.orange; dayText = "fällig"; }
+        else if (days <= 7) { dayColor = X.red; dayText = `${days}d`; }
+        else if (days <= 14) { dayColor = X.orange; dayText = `${days}d`; }
+        else if (days <= 30) { dayColor = X.yellow; dayText = `${days}d`; }
+
+        return React.createElement("div", {
+          key: ticker,
+          style: {
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "5px 8px", borderRadius: 6,
+            background: isReported ? `${X.green}08` : isPast ? `${X.orange}10` : "#0f172a44",
+            border: `1px solid ${isReported ? X.green + "22" : "#1e293b"}`,
+            opacity: isReported ? 0.6 : 1,
+          }
+        },
+          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0 } },
+            React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "#e2e8f0", whiteSpace: "nowrap" } }, ticker),
+            React.createElement("span", { style: { fontSize: 9, color: "#64748b" } },
+              new Date(info.date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })
+            ),
+            info.confirmed && React.createElement("span", { style: { fontSize: 8, color: X.green }, title: "Termin per Web-Suche bestätigt" }, "✓")
+          ),
+          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
+            React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: dayColor, fontFamily: "'JetBrains Mono',monospace" } }, dayText),
+            !isReported && isPast && React.createElement("button", {
+              onClick: () => handleMarkReported(ticker),
+              style: { background: `${X.green}18`, border: `1px solid ${X.green}33`, borderRadius: 4, color: X.green, fontSize: 8, padding: "2px 5px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }
+            }, "✓ reported")
+          )
+        );
+      })
+    ),
+
+    // "Termine verifizieren" Button — nur in aufmerksamkeit/bald/jetzt Phase
+    canSearch && React.createElement("div", { style: { marginTop: 8 } },
+      React.createElement("button", {
+        onClick: handleSearch, disabled: searching || busy,
+        style: {
+          width: "100%", padding: 7, borderRadius: 6, border: "none", cursor: searching ? "wait" : "pointer",
+          fontSize: 10, fontWeight: 700, fontFamily: "inherit",
+          background: `${ps.accent}22`, color: ps.accent,
+          opacity: searching || busy ? 0.5 : 1,
+        }
+      }, searching ? "⟳ Suche läuft…" : "🔍 Termine verifizieren")
+    )
+  );
+}
 
 /* ═══ SMALL COMPONENTS ═══ */
 function BDG({ s }) {
@@ -1242,6 +1489,14 @@ function App() {
   const [dcaMonths, setDcaMonths] = useState("12");
   const [dcaExtra, setDcaExtra] = useState("");
   const [dcaDetail, setDcaDetail] = useState(null);
+  const [capexImpact, setCapexImpact] = useState(null);
+  const [earningsDates, setEarningsDates] = useState(() => loadEarningsDates());
+  const [showRunConfirm, setShowRunConfirm] = useState(false);
+
+  const updateEarningsDates = useCallback((newDates) => {
+    setEarningsDates(newDates);
+    saveEarningsDates(newDates);
+  }, []);
 
   useEffect(() => {
     const saved = loadData();
@@ -1267,6 +1522,7 @@ function App() {
       if (saved.dcaBudget) setDcaBudget(saved.dcaBudget);
       if (saved.dcaMonths) setDcaMonths(saved.dcaMonths);
       if (saved.dcaExtra) setDcaExtra(saved.dcaExtra);
+      if (saved.capexImpact) setCapexImpact(saved.capexImpact);
     }
     setDataLoaded(true);
     // Earnings-Kalender + EUR/USD-Kurs laden
@@ -1353,9 +1609,9 @@ function App() {
   }, []);
 
   const persistAll = useCallback((overrides = {}) => {
-    const payload = { stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun: lastRun?.toISOString(), logs, macro, marketIndicators, dcaPlan, dcaBudget, dcaMonths, dcaExtra, ...overrides };
+    const payload = { stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun: lastRun?.toISOString(), logs, macro, marketIndicators, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact, ...overrides };
     saveData(payload);
-  }, [stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun, logs, macro, marketIndicators, dcaPlan, dcaBudget, dcaMonths, dcaExtra]);
+  }, [stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun, logs, macro, marketIndicators, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact]);
 
   const addStock = useCallback(() => {
     if (!addTicker.trim() || !addName.trim()) return;
@@ -1455,10 +1711,10 @@ function App() {
     let lCapex = [], lTsmc = null, lDram = null, lNvidia = null, lPos = {}, lInsider = null;
     let lMacro = null, lMarket = null;
     let step = 0;
-    // Total: 1 Finnhub + 1 Macro + 2 capex + 2 indicators + N positions + 1 analysis + 1 timing
+    // Total: 1 Finnhub + 1 Macro + 2 capex + 2 indicators + N positions + 1 analysis + 1 timing + 2 earnings-deep
     const hasFmp = !!getFmpKey();
     const hasFred = !!getFredKey();
-    const total = (hasFmp ? 1 : 0) + (hasFred || hasFmp ? 1 : 0) + 2 + 2 + stocks.length + 1 + 1;
+    const total = (hasFmp ? 1 : 0) + (hasFred || hasFmp ? 1 : 0) + 2 + 2 + stocks.length + 1 + 1 + 2;
 
     const advance = (label) => { step++; setStepName(label); setPct(Math.round((step / total) * 100)); };
 
@@ -1575,7 +1831,59 @@ function App() {
     setAnalysis(ana);
     addLog("✓ Status: " + (ana?.overallStatus || "?"));
 
-    // Phase 6: Timing analysis (no web search) — uses position data which already includes price info
+    // Phase 6: Hyperscaler Earnings Deep-Dive
+    if (check()) return;
+    await delay(API_DELAY);
+    advance("Earnings-Ergebnisse Hyperscaler");
+    addLog("→ Hyperscaler Earnings + Guidance-Änderungen");
+    const earningsDeep = await doMultiSearch(
+      "Microsoft Alphabet Google Amazon Meta latest quarterly earnings results revenue guidance capex spending change 2026",
+      ["Earnings Results", "CapEx Guidance Changes"]
+    );
+    addLog("  ✓ Earnings: " + earningsDeep["Earnings Results"].sentiment + ", Guidance: " + earningsDeep["CapEx Guidance Changes"].sentiment);
+
+    // Phase 7: CapEx-Implikation für Portfolio
+    if (check()) return;
+    await delay(API_DELAY);
+    advance("CapEx-Portfolio-Implikation");
+    addLog("→ CapEx-Implikation für Portfolio…");
+    const earningsResultsSummary = earningsDeep["Earnings Results"].summary + " | Guidance: " + earningsDeep["CapEx Guidance Changes"].summary;
+    const capexSummary = lCapex.map(c => `${c.label}: ${c.sentiment} — ${c.summary}`).join("\n");
+    const portfolioList = stocks.map(s => `${s.ticker} (${s.name}, ${s.sector})`).join(", ");
+    const capexImpactRaw = await callAPI(
+      `Basierend auf den neuesten Hyperscaler-Earnings und CapEx-Guidance-Änderungen:
+
+EARNINGS & GUIDANCE:
+${earningsResultsSummary}
+
+CAPEX-DATEN:
+${capexSummary}
+
+PORTFOLIO:
+${portfolioList}
+
+Bewerte die konkreten Auswirkungen der aktuellen CapEx-Entwicklung auf jede Portfolio-Position.
+Antworte NUR mit validem JSON:
+{"summary":"3-4 Sätze Gesamteinschätzung deutsch","impact":"positive|negative|neutral","winners":[{"ticker":"XXX","reason":"1 Satz deutsch"}],"losers":[{"ticker":"XXX","reason":"1 Satz deutsch"}],"guidance_changes":"2-3 Sätze zu relevanten Guidance-Änderungen deutsch"}`,
+      "Du bist ein erfahrener Analyst für AI-Infrastruktur-Investments. Bewerte CapEx-Implikationen präzise. NUR valides JSON.",
+      false,
+      800
+    );
+    let lCapexImpact = null;
+    try {
+      const parsed = extractJSON(capexImpactRaw);
+      if (parsed && parsed.summary) {
+        parsed.summary = cleanText(parsed.summary);
+        if (parsed.guidance_changes) parsed.guidance_changes = cleanText(parsed.guidance_changes);
+        if (parsed.winners) parsed.winners = parsed.winners.map(w => ({ ...w, reason: cleanText(w.reason) }));
+        if (parsed.losers) parsed.losers = parsed.losers.map(l => ({ ...l, reason: cleanText(l.reason) }));
+        lCapexImpact = parsed;
+      }
+    } catch {}
+    setCapexImpact(lCapexImpact);
+    addLog("✓ CapEx-Implikation: " + (lCapexImpact?.impact || "?"));
+
+    // Phase 8: Timing analysis — now includes earnings deep-dive + capex impact data
     if (check()) return;
     await delay(API_DELAY);
     advance("Timing-Bewertung");
@@ -1584,7 +1892,7 @@ function App() {
     for (const [ticker, data] of Object.entries(lPos)) {
       priceData[ticker] = { sentiment: data.sentiment, summary: (data.summary || "").slice(0, 200) };
     }
-    const tim = await doTimingAnalysis(priceData, stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate);
+    const tim = await doTimingAnalysis(priceData, stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, lCapexImpact);
     setTiming(tim);
     addLog("✓ Timing: Score " + (tim?.opportunityScore || "?") + "/10");
 
@@ -1593,7 +1901,7 @@ function App() {
     debugSaveToServer(stocks, fmpData, eurUsdRate);
 
     setLogs(prevLogs => {
-      saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, lastRun: now.toISOString(), logs: prevLogs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
+      saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, lastRun: now.toISOString(), logs: prevLogs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact: lCapexImpact });
       return prevLogs;
     });
   }, [addLog, stocks]);
@@ -1635,7 +1943,7 @@ function App() {
     }
     await delay(API_DELAY);
     setTimingStep("Timing-Bewertung…");
-    const tim = await doTimingAnalysis(priceResults, stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate);
+    const tim = await doTimingAnalysis(priceResults, stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, capexImpact);
     setTiming(tim);
     setBusyTiming(false);
     setTimingStep("");
@@ -1736,13 +2044,71 @@ function App() {
         )
       ),
 
-      /* ── BUTTON ── */
-      React.createElement("button", { onClick: busy ? cancelResearch : () => { if (checkKeys()) run(); }, style: {
-        width: "100%", padding: 11, marginTop: 10, marginBottom: 4, borderRadius: 10, border: "none",
-        cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit",
-        background: busy ? `linear-gradient(135deg,${X.red},${X.orange})` : `linear-gradient(135deg,${X.indigo},#8b5cf6)`,
-        color: "#fff", boxShadow: busy ? `0 4px 14px ${X.red}33` : `0 4px 14px ${X.indigo}33`,
-      } }, busy ? `⛔ Abbrechen — ${stepName} (${pct}%)` : `▶  Live-Recherche starten (${stocks.length} Positionen)`),
+      /* ── EARNINGS BANNER ── */
+      React.createElement(EarningsBanner, {
+        dates: earningsDates,
+        onUpdate: updateEarningsDates,
+        busy,
+      }),
+
+      /* ── MAIN ANALYSIS BUTTON ── */
+      (() => {
+        const phase = earningsPhase(earningsDates);
+        const allReported = phase === "allReported";
+        const isUrgent = phase === "jetzt" || allReported;
+        const isSoon = phase === "bald";
+        const isCalm = phase === "ruhig";
+        // Button-Farben nach Phase
+        const btnBg = busy ? `linear-gradient(135deg,${X.red},${X.orange})`
+          : allReported ? `linear-gradient(135deg,${X.red},${X.orange})`
+          : isUrgent ? `linear-gradient(135deg,${X.orange},${X.red})`
+          : isSoon ? `linear-gradient(135deg,${X.orange},${X.yellow})`
+          : phase === "aufmerksamkeit" ? `linear-gradient(135deg,${X.yellow},${X.orange})`
+          : `linear-gradient(135deg,${X.indigo},#8b5cf6)`;
+        const btnShadowColor = busy ? X.red
+          : allReported ? X.red
+          : isUrgent ? X.orange
+          : isSoon ? X.orange
+          : phase === "aufmerksamkeit" ? X.yellow
+          : X.indigo;
+        // Phasen-Info
+        const phaseHint = allReported ? "Alle Hyperscaler haben reported — Analyse empfohlen!"
+          : isUrgent ? "Earnings-Woche läuft — neue Daten verfügbar"
+          : isSoon ? "Earnings stehen bevor — Analyse bald sinnvoll"
+          : phase === "aufmerksamkeit" ? "Earnings in 2-4 Wochen"
+          : "Keine neuen Earnings — letzte Daten noch aktuell";
+        const btnLabel = busy ? `⛔ Abbrechen — ${stepName} (${pct}%)`
+          : allReported ? `▶  Komplettanalyse starten (${stocks.length} Pos.)`
+          : `▶  Komplettanalyse starten (${stocks.length} Pos.)`;
+        const handleClick = () => {
+          if (busy) { cancelResearch(); return; }
+          if (!checkKeys()) return;
+          if (isCalm) { setShowRunConfirm(true); return; }
+          run();
+        };
+        return React.createElement(React.Fragment, null,
+          React.createElement("button", { onClick: handleClick, style: {
+            width: "100%", padding: 11, marginTop: 10, marginBottom: 0, borderRadius: 10, border: "none",
+            cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit",
+            background: btnBg, color: "#fff", boxShadow: `0 4px 14px ${btnShadowColor}33`,
+            animation: allReported ? "earningsPulse 1.2s infinite" : "none",
+          } }, btnLabel),
+          // Phasen-Hinweis unter dem Button
+          !busy && React.createElement("div", { style: { textAlign: "center", fontSize: 9, color: isCalm ? "#475569" : isUrgent || allReported ? X.orange : X.yellow, marginTop: 4, marginBottom: 4 } }, phaseHint),
+          // Bestätigungs-Dialog
+          showRunConfirm && React.createElement("div", { style: { background: `${X.indigo}12`, border: `1px solid ${X.indigo}44`, borderRadius: 10, padding: "12px 14px", marginTop: 4, marginBottom: 4 } },
+            React.createElement("div", { style: { fontSize: 11, color: "#e2e8f0", marginBottom: 8, lineHeight: 1.6 } },
+              "Es liegen aktuell keine neuen Hyperscaler-Earnings vor. Die letzte Analyse basiert noch auf aktuellen Daten.",
+              React.createElement("br"),
+              React.createElement("span", { style: { color: "#94a3b8" } }, "Trotzdem eine Komplettanalyse starten? (verbraucht API-Credits)")
+            ),
+            React.createElement("div", { style: { display: "flex", gap: 8 } },
+              React.createElement("button", { onClick: () => { setShowRunConfirm(false); run(); }, style: { flex: 1, padding: 8, borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "inherit", background: `linear-gradient(135deg,${X.indigo},#8b5cf6)`, color: "#fff" } }, "▶ Ja, starten"),
+              React.createElement("button", { onClick: () => setShowRunConfirm(false), style: { flex: 1, padding: 8, borderRadius: 8, border: `1px solid #334155`, cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#94a3b8" } }, "Abbrechen")
+            )
+          )
+        );
+      })(),
 
       busy && React.createElement("div", { style: { marginTop: 6, marginBottom: 6 } },
         React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 3 } },
@@ -1858,6 +2224,40 @@ function App() {
       /* ═══ CAPEX ═══ */
       tab === "capex" && React.createElement(React.Fragment, null,
         React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 12, lineHeight: 1.6 } }, "CapEx der Hyperscaler. Gleichzeitiger Rückgang bei ≥2 ist das kritischste Signal."),
+
+        /* ── CAPEX IMPACT (Earnings Deep-Dive) ── */
+        capexImpact && React.createElement(React.Fragment, null,
+          React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${capexImpact.impact === "positive" ? X.green + "44" : capexImpact.impact === "negative" ? X.red + "44" : X.yellow + "44"}`, padding: 15, marginBottom: 10 } },
+            React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
+              React.createElement("span", { style: { fontSize: 13, fontWeight: 700 } }, "Earnings-Impact"),
+              React.createElement("span", { style: { fontSize: 9, padding: "2px 8px", borderRadius: 10, background: `${capexImpact.impact === "positive" ? X.green : capexImpact.impact === "negative" ? X.red : X.yellow}18`, border: `1px solid ${capexImpact.impact === "positive" ? X.green : capexImpact.impact === "negative" ? X.red : X.yellow}44`, color: capexImpact.impact === "positive" ? X.green : capexImpact.impact === "negative" ? X.red : X.yellow, fontWeight: 700, letterSpacing: ".05em", textTransform: "uppercase" } }, capexImpact.impact === "positive" ? "POSITIV" : capexImpact.impact === "negative" ? "NEGATIV" : "NEUTRAL")
+            ),
+            React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: 0 } }, capexImpact.summary)
+          ),
+
+          capexImpact.guidance_changes && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 15, marginBottom: 10 } },
+            React.createElement("div", { style: { fontSize: 12, fontWeight: 700, marginBottom: 6, color: X.purple } }, "Guidance-Änderungen"),
+            React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", lineHeight: 1.7, margin: 0 } }, capexImpact.guidance_changes)
+          ),
+
+          (capexImpact.winners?.length > 0 || capexImpact.losers?.length > 0) && React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 } },
+            capexImpact.winners?.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X.green}22`, padding: 12 } },
+              React.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: X.green, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 } }, "Winners"),
+              capexImpact.winners.map((w, i) => React.createElement("div", { key: i, style: { fontSize: 11, color: "#e2e8f0", marginBottom: 4 } },
+                React.createElement("span", { style: { fontWeight: 700, color: X.green } }, w.ticker), " ", React.createElement("span", { style: { color: "#94a3b8" } }, w.reason)
+              ))
+            ),
+            capexImpact.losers?.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X.red}22`, padding: 12 } },
+              React.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: X.red, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 } }, "Losers"),
+              capexImpact.losers.map((l, i) => React.createElement("div", { key: i, style: { fontSize: 11, color: "#e2e8f0", marginBottom: 4 } },
+                React.createElement("span", { style: { fontWeight: 700, color: X.red } }, l.ticker), " ", React.createElement("span", { style: { color: "#94a3b8" } }, l.reason)
+              ))
+            )
+          ),
+
+          React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.purple, margin: "6px 0 10px", textTransform: "uppercase", letterSpacing: ".06em" } }, "Einzelanalysen")
+        ),
+
         capex.length > 0 ? capex.map((r, i) =>
           React.createElement("div", { key: i, style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 15, marginBottom: 8 } },
             React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
@@ -2357,7 +2757,9 @@ function App() {
                 React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, a.reason),
                 expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, a.detail)
               );
-            }) : React.createElement("div", { style: { padding: "10px 15px", fontSize: 11, color: "#475569" } }, "Kein Handlungsbedarf")
+            }) : React.createElement("div", { style: { padding: "10px 15px", fontSize: 11, color: "#475569" } },
+              "Kein Handlungsbedarf", timing.noExtraReason && React.createElement("span", { style: { color: "#64748b", marginLeft: 4 } }, `— ${timing.noExtraReason}`)
+            )
           ),
 
           /* Umschichtungen */
@@ -2382,7 +2784,9 @@ function App() {
                 React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, t.reason),
                 expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
               );
-            }) : React.createElement("div", { style: { padding: "10px 15px", fontSize: 11, color: "#475569" } }, "Kein Handlungsbedarf")
+            }) : React.createElement("div", { style: { padding: "10px 15px", fontSize: 11, color: "#475569" } },
+              "Kein Handlungsbedarf", timing.noRebalanceReason && React.createElement("span", { style: { color: "#64748b", marginLeft: 4 } }, `— ${timing.noRebalanceReason}`)
+            )
           ),
 
           /* Gewinnmitnahmen */
@@ -2403,7 +2807,9 @@ function App() {
                 React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, t.reason),
                 expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
               );
-            }) : React.createElement("div", { style: { padding: "10px 15px", fontSize: 11, color: "#475569" } }, "Kein Handlungsbedarf")
+            }) : React.createElement("div", { style: { padding: "10px 15px", fontSize: 11, color: "#475569" } },
+              "Kein Handlungsbedarf", timing.noTakeProfitReason && React.createElement("span", { style: { color: "#64748b", marginLeft: 4 } }, `— ${timing.noTakeProfitReason}`)
+            )
           )
 
         ) : React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 28, textAlign: "center" } },
@@ -2440,7 +2846,7 @@ function App() {
             if (!checkKeys()) return;
             setBusyDca(true);
             try {
-              const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate);
+              const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate, capexImpact);
               setDcaPlan(plan);
               persistAll({ dcaPlan: plan });
             } catch (e) {
@@ -2454,7 +2860,32 @@ function App() {
             width: "100%", padding: 11, borderRadius: 10, border: "none", cursor: busyDca ? "default" : "pointer",
             fontSize: 13, fontWeight: 700, fontFamily: "inherit",
             background: busyDca ? "#1e293b" : `linear-gradient(135deg,${X.indigo},#8b5cf6)`, color: busyDca ? "#475569" : "#fff"
-          } }, busyDca ? "⟳ Erstelle DCA-Plan…" : "DCA-Plan berechnen")
+          } }, busyDca ? "⟳ Erstelle DCA-Plan…" : "DCA-Plan berechnen"),
+
+          // Blinkender "Neu berechnen" Button nach Komplettanalyse
+          capexImpact && dcaPlan && !busyDca && React.createElement("button", {
+            onClick: async () => {
+              const budget = parseFloat(dcaBudget);
+              const mo = parseInt(dcaMonths);
+              const extra = parseFloat(dcaExtra) || 0;
+              if (!budget || budget <= 0 || !mo || mo <= 0) return;
+              if (!checkKeys()) return;
+              setBusyDca(true);
+              try {
+                const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate, capexImpact);
+                setDcaPlan(plan);
+                persistAll({ dcaPlan: plan });
+              } catch (e) { console.error("DCA rebalance error:", e); }
+              finally { setBusyDca(false); }
+            },
+            style: {
+              width: "100%", padding: 11, marginTop: 8, borderRadius: 10, border: "none", cursor: "pointer",
+              fontSize: 13, fontWeight: 700, fontFamily: "inherit",
+              background: `linear-gradient(135deg,${X.red},${X.orange})`, color: "#fff",
+              boxShadow: `0 4px 14px ${X.red}33`,
+              animation: "earningsPulse 1.2s infinite",
+            }
+          }, "⚡ DCA auf Basis neuer CapEx-Erkenntnisse neu berechnen")
         ),
 
         dcaPlan && React.createElement(React.Fragment, null,
