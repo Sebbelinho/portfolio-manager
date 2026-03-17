@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "17.03.2026, 23:58 Uhr";
+const BUILD_TIMESTAMP = "18.03.2026, 00:16 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -195,22 +195,7 @@ async function fetchStockData(tickers) {
         const fmpVal = (v) => (v !== null && v !== undefined && v !== "NULL" && v !== "" && !isNaN(v)) ? Number(v) : null;
         let yearHigh = fmpVal(m["52WeekHigh"]);
         const yearLow = fmpVal(m["52WeekLow"]);
-        // Finnhub 52WeekHigh kann veraltet sein — Korrektur über Candles
-        try {
-          const now = Math.floor(Date.now() / 1000);
-          const yearAgo = now - 365 * 86400;
-          const candleRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${ticker}&resolution=W&from=${yearAgo}&to=${now}&token=${token}`);
-          const candle = await candleRes.json();
-          if (candle && candle.s === "ok" && Array.isArray(candle.h) && candle.h.length > 0) {
-            const candleHigh = Math.max(...candle.h);
-            if (candleHigh > (yearHigh || 0)) {
-              const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-              debugPush({ ts, label: `${ticker} 52wH korrigiert: $${yearHigh || "n/a"} → $${Math.round(candleHigh * 100) / 100} (Candles)`, status: "ok", fmp: true });
-              yearHigh = Math.round(candleHigh * 100) / 100;
-            }
-          }
-        } catch {}
-        // Fallback: wenn Kurs über 52wH liegt, ist das 52wH falsch
+        // Fallback: wenn Kurs über 52wH liegt, ist das 52wH offensichtlich falsch
         if (yearHigh && q.c > yearHigh) yearHigh = q.c;
 
         // Analyst consensus (latest entry)
@@ -274,6 +259,59 @@ async function fetchStockData(tickers) {
     }
   }
   return results;
+}
+
+async function verify52WeekHighs(stockData) {
+  const tickers = Object.keys(stockData);
+  if (tickers.length === 0) return stockData;
+  const tickerList = tickers.map(t => `${t}: Finnhub=$${stockData[t].yearHigh ?? "n/a"}`).join(", ");
+  const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  debugPush({ ts, label: `52wH Verifizierung: ${tickers.length} Ticker`, status: "pending", search: true, tokens: 500 });
+  const dbIdx = _debugLog.length - 1;
+  try {
+    const raw = await callAPI(
+      `Look up the current 52-week high price (in USD) for each of these stocks: ${tickers.join(", ")}.
+
+Current Finnhub values for reference (may be stale/incorrect): ${tickerList}
+
+Respond ONLY with raw JSON, no backticks:
+{"highs":{"TICKER":123.45}}
+Include ALL tickers. Use the actual 52-week high from current market data.`,
+      "Financial data analyst. Use web_search to find accurate 52-week high prices. Respond with ONLY raw JSON.",
+      true,
+      500
+    );
+    const j = extractJSON(raw);
+    if (j && j.highs) {
+      const corrections = [];
+      const updated = { ...stockData };
+      for (const [ticker, newHigh] of Object.entries(j.highs)) {
+        if (updated[ticker] && typeof newHigh === "number" && newHigh > 0) {
+          const old = updated[ticker].yearHigh;
+          if (old === null || Math.abs(newHigh - old) / (old || 1) > 0.02) {
+            corrections.push(`${ticker}: $${old ?? "n/a"}→$${newHigh}`);
+            updated[ticker] = {
+              ...updated[ticker],
+              yearHigh: newHigh,
+              fromHigh: ((1 - updated[ticker].price / newHigh) * 100).toFixed(1),
+            };
+          }
+        }
+      }
+      _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: corrections.length > 0
+        ? `52wH korrigiert: ${corrections.join(", ")}`
+        : `52wH verifiziert: alle ${tickers.length} Werte korrekt` };
+      _debugListeners.forEach(fn => fn([..._debugLog]));
+      return updated;
+    }
+    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: 0, detail: "Kein gültiges JSON" };
+    _debugListeners.forEach(fn => fn([..._debugLog]));
+    return stockData;
+  } catch (e) {
+    _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "error", code: 0, detail: e.message };
+    _debugListeners.forEach(fn => fn([..._debugLog]));
+    return stockData;
+  }
 }
 
 async function fetchInsiderData(tickers) {
@@ -1533,6 +1571,7 @@ function App() {
   const [dcaDetail, setDcaDetail] = useState(null);
   const [capexImpact, setCapexImpact] = useState(null);
   const [dcaIncorporatesCapex, setDcaIncorporatesCapex] = useState(false);
+  const [busyVerify, setBusyVerify] = useState(false);
   const [earningsDates, setEarningsDates] = useState(() => loadEarningsDates());
   const [showRunConfirm, setShowRunConfirm] = useState(false);
 
@@ -1784,6 +1823,12 @@ function App() {
       }
       const insiderSells = Object.entries(lInsiderData).filter(([, d]) => d.totalSells > 0);
       if (insiderSells.length > 0) addLog(`  ⚠ Insider-Verkäufe: ${insiderSells.map(([t, d]) => `${t}(${d.totalSells})`).join(", ")}`);
+
+      // 52-Wochen-Hochs über Web-Suche verifizieren
+      if (check()) return;
+      addLog("→ 52-Wochen-Hochs verifizieren…");
+      fmpData = await verify52WeekHighs(fmpData);
+      setFinnhubData(fmpData);
     }
 
     // Phase 0.5: Macro-Daten (FRED + VIX/ETFs)
@@ -1972,6 +2017,9 @@ Antworte NUR mit validem JSON:
       lInsiderData = insiderResult;
       lMacro = fredResult;
       lMarket = marketResult;
+      // 52wH verifizieren
+      setTimingStep("52-Wochen-Hochs verifizieren…");
+      fmpData = await verify52WeekHighs(fmpData);
       setFinnhubData(fmpData);
       setInsiderData(lInsiderData);
       if (lMacro) setMacro(lMacro);
@@ -2706,6 +2754,30 @@ Antworte NUR mit validem JSON:
           color: (busyTiming || busy) ? "#64748b" : "#fff",
           boxShadow: (busyTiming || busy) ? "none" : `0 4px 14px ${X.cyan}22`,
         } }, busyTiming ? `⟳ ${timingStep}` : "⚡  Timing aktualisieren"),
+
+        /* 52wH verifizieren */
+        Object.keys(finnhubData).length > 0 && React.createElement("button", {
+          onClick: async () => {
+            if (!getApiKey()) return;
+            setBusyVerify(true);
+            try {
+              const verified = await verify52WeekHighs(finnhubData);
+              setFinnhubData(verified);
+              persistAll({ finnhubData: verified });
+            } catch (e) { console.error("Verify error:", e); }
+            finally { setBusyVerify(false); }
+          },
+          disabled: busyVerify || busy || busyTiming,
+          style: {
+            width: "100%", padding: 9, marginBottom: 12, borderRadius: 10,
+            border: `1px solid ${X.purple}44`,
+            cursor: (busyVerify || busy || busyTiming) ? "not-allowed" : "pointer",
+            fontSize: 11, fontWeight: 600, fontFamily: "inherit",
+            background: busyVerify ? "#1e293b" : `${X.purple}15`,
+            color: busyVerify ? "#64748b" : X.purple,
+            opacity: (busy || busyTiming) ? 0.4 : 1,
+          }
+        }, busyVerify ? "⟳ 52-Wochen-Hochs werden verifiziert…" : "🔍  52-Wochen-Hochs verifizieren (Web-Suche)"),
 
         timing ? React.createElement(React.Fragment, null,
           /* Macro Context Strip */
