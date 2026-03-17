@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "17.03.2026, 22:54 Uhr";
+const BUILD_TIMESTAMP = "17.03.2026, 23:07 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -492,7 +492,7 @@ async function doMultiSearch(query, keys) {
   }
 }
 
-async function doAnalyze(allData, stockList, fmpData, insiderDataMap, macroData, marketData) {
+async function doAnalyze(allData, stockList, fmpData, insiderDataMap, macroData, marketData, capexImpactData, timingData) {
   const capexTickers = stockList.filter(s => s.type === "capex").map(s => s.ticker).join(", ");
   const otherInfo = stockList.filter(s => s.type === "other").map(s => `${s.ticker} (${s.sector})`).join(", ");
   const compact = {};
@@ -564,10 +564,26 @@ async function doAnalyze(allData, stockList, fmpData, insiderDataMap, macroData,
     marketBlock = `\n\nMarktindikatoren (Finnhub, exakte Daten):\n${parts.join("\n")}`;
   }
 
+  let capexImpactBlock = "";
+  if (capexImpactData) {
+    const cParts = [`Impact: ${capexImpactData.impact} — ${capexImpactData.summary}`];
+    if (capexImpactData.guidance_changes) cParts.push(`Guidance-Änderungen: ${capexImpactData.guidance_changes}`);
+    if (capexImpactData.winners?.length) cParts.push(`Winners: ${capexImpactData.winners.map(w => `${w.ticker}: ${w.reason}`).join("; ")}`);
+    if (capexImpactData.losers?.length) cParts.push(`Losers: ${capexImpactData.losers.map(l => `${l.ticker}: ${l.reason}`).join("; ")}`);
+    capexImpactBlock = `\n\nHyperscaler Earnings & CapEx-Implikation:\n${cParts.join("\n")}`;
+  }
+
+  let timingBlock = "";
+  if (timingData?.stocks) {
+    const tLines = timingData.stocks.map(s => `${s.ticker}: ${s.signal} (${s.action}) — ${s.reason}`);
+    timingBlock = `\n\nTiming-Bewertung (Opportunity Score: ${timingData.opportunityScore || "?"}/10):\n${tLines.join("\n")}`;
+    if (timingData.dcaAdvice) timingBlock += `\nDCA-Empfehlung: ${timingData.dcaAdvice}`;
+  }
+
   try {
     const raw = await callAPI(
       `Portfolio: CapEx-Aktien: ${capexTickers}${otherInfo ? ". Andere: " + otherInfo : ""}
-Daten: ${JSON.stringify(compact)}${fmpBlock}${insiderBlock}${concBlock}${macroBlock}${marketBlock}
+Daten: ${JSON.stringify(compact)}${fmpBlock}${insiderBlock}${concBlock}${macroBlock}${marketBlock}${capexImpactBlock}${timingBlock}
 
 Antworte NUR mit validem JSON. Kein Markdown, keine Backticks, kein Text davor oder danach:
 {"overallStatus":"green","explanation":"1-2 Sätze deutsch","capexTrend":"accelerating","alerts":[{"name":"CapEx-Wende","status":"green","detail":"deutsch"},{"name":"TSMC-Trend","status":"green","detail":"deutsch"},{"name":"DRAM-Preise","status":"green","detail":"deutsch"},{"name":"Bewertungsrisiko","status":"yellow","detail":"deutsch"},{"name":"Insider-Aktivität","status":"green","detail":"deutsch"},{"name":"NVIDIA-Guidance","status":"green","detail":"deutsch"},{"name":"Zinsumfeld","status":"green","detail":"deutsch"},{"name":"Marktbreite","status":"green","detail":"deutsch"}],"risks":["deutsch1","deutsch2","deutsch3"],"action":"deutsch","nextEvent":"deutsch"}
@@ -1815,23 +1831,14 @@ function App() {
       addLog("  ✓ " + s.name + ": " + result.sentiment);
     }
 
-    // Phase 4: Analysis (no web search)
-    if (check()) return;
-    await delay(API_DELAY);
-    advance("Gesamtanalyse");
-    addLog("→ Gesamtanalyse…");
-    // Insider-Daten als Zusammenfassung für Analyse bereitstellen
+    // Insider-Daten als Zusammenfassung bereitstellen
     lInsider = hasFmp && Object.keys(lInsiderData).length > 0
       ? { sentiment: Object.values(lInsiderData).some(d => d.totalSells > 3) ? "bearish" : Object.values(lInsiderData).every(d => d.totalSells === 0) ? "bullish" : "neutral",
           summary: Object.entries(lInsiderData).map(([t, d]) => `${t}: ${d.totalSells} Verkäufe ($${(d.sellVolume/1e6).toFixed(1)}M), ${d.totalBuys} Käufe`).join("; ") }
       : lInsider;
     setInsider(lInsider);
-    const allData = { capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider };
-    const ana = await doAnalyze(allData, stocks, fmpData, lInsiderData, lMacro, lMarket);
-    setAnalysis(ana);
-    addLog("✓ Status: " + (ana?.overallStatus || "?"));
 
-    // Phase 6: Hyperscaler Earnings Deep-Dive
+    // Phase 4: Hyperscaler Earnings Deep-Dive
     if (check()) return;
     await delay(API_DELAY);
     advance("Earnings-Ergebnisse Hyperscaler");
@@ -1842,7 +1849,7 @@ function App() {
     );
     addLog("  ✓ Earnings: " + earningsDeep["Earnings Results"].sentiment + ", Guidance: " + earningsDeep["CapEx Guidance Changes"].sentiment);
 
-    // Phase 7: CapEx-Implikation für Portfolio
+    // Phase 5: CapEx-Implikation für Portfolio
     if (check()) return;
     await delay(API_DELAY);
     advance("CapEx-Portfolio-Implikation");
@@ -1883,7 +1890,7 @@ Antworte NUR mit validem JSON:
     setCapexImpact(lCapexImpact);
     addLog("✓ CapEx-Implikation: " + (lCapexImpact?.impact || "?"));
 
-    // Phase 8: Timing analysis — now includes earnings deep-dive + capex impact data
+    // Phase 6: Timing analysis — includes earnings deep-dive + capex impact data
     if (check()) return;
     await delay(API_DELAY);
     advance("Timing-Bewertung");
@@ -1895,6 +1902,16 @@ Antworte NUR mit validem JSON:
     const tim = await doTimingAnalysis(priceData, stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, lCapexImpact);
     setTiming(tim);
     addLog("✓ Timing: Score " + (tim?.opportunityScore || "?") + "/10");
+
+    // Phase 7: Gesamtanalyse — am Ende, bezieht ALLE Erkenntnisse ein
+    if (check()) return;
+    await delay(API_DELAY);
+    advance("Gesamtanalyse");
+    addLog("→ Gesamtanalyse…");
+    const allData = { capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider };
+    const ana = await doAnalyze(allData, stocks, fmpData, lInsiderData, lMacro, lMarket, lCapexImpact, tim);
+    setAnalysis(ana);
+    addLog("✓ Status: " + (ana?.overallStatus || "?"));
 
     const now = new Date();
     setPct(100); setLastRun(now); setBusy(false);
