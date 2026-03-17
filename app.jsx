@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "18.03.2026, 00:16 Uhr";
+const BUILD_TIMESTAMP = "18.03.2026, 00:26 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -2839,7 +2839,7 @@ Antworte NUR mit validem JSON:
               ),
               React.createElement("div", { style: { fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, s.reason),
               React.createElement("div", { style: { display: "flex", gap: 12, marginTop: 6, fontSize: 10, color: "#64748b" } },
-                s.fromHigh && React.createElement("span", null, "Vom Hoch: ", React.createElement("span", { style: { color: col } }, s.fromHigh)),
+                (finnhubData[s.ticker]?.fromHigh || s.fromHigh) && React.createElement("span", null, "Vom Hoch: ", React.createElement("span", { style: { color: col } }, finnhubData[s.ticker]?.fromHigh ? `-${finnhubData[s.ticker].fromHigh}%` : s.fromHigh)),
                 s.momentum && React.createElement("span", null, "Momentum: ", React.createElement("span", { style: { color: s.momentum === "positiv" ? X.green : s.momentum === "negativ" ? X.red : X.yellow } }, s.momentum))
               ),
               finnhubData[s.ticker] && React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 } },
