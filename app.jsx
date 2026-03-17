@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "17.03.2026, 23:07 Uhr";
+const BUILD_TIMESTAMP = "17.03.2026, 23:44 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -1506,6 +1506,7 @@ function App() {
   const [dcaExtra, setDcaExtra] = useState("");
   const [dcaDetail, setDcaDetail] = useState(null);
   const [capexImpact, setCapexImpact] = useState(null);
+  const [dcaIncorporatesCapex, setDcaIncorporatesCapex] = useState(false);
   const [earningsDates, setEarningsDates] = useState(() => loadEarningsDates());
   const [showRunConfirm, setShowRunConfirm] = useState(false);
 
@@ -1888,6 +1889,7 @@ Antworte NUR mit validem JSON:
       }
     } catch {}
     setCapexImpact(lCapexImpact);
+    setDcaIncorporatesCapex(false);
     addLog("✓ CapEx-Implikation: " + (lCapexImpact?.impact || "?"));
 
     // Phase 6: Timing analysis — includes earnings deep-dive + capex impact data
@@ -2880,7 +2882,7 @@ Antworte NUR mit validem JSON:
           } }, busyDca ? "⟳ Erstelle DCA-Plan…" : "DCA-Plan berechnen"),
 
           // Blinkender "Neu berechnen" Button nach Komplettanalyse
-          capexImpact && dcaPlan && !busyDca && React.createElement("button", {
+          capexImpact && dcaPlan && !busyDca && !dcaIncorporatesCapex && React.createElement("button", {
             onClick: async () => {
               const budget = parseFloat(dcaBudget);
               const mo = parseInt(dcaMonths);
@@ -2891,7 +2893,7 @@ Antworte NUR mit validem JSON:
               try {
                 const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate, capexImpact);
                 setDcaPlan(plan);
-                persistAll({ dcaPlan: plan });
+                setDcaIncorporatesCapex(true);
               } catch (e) { console.error("DCA rebalance error:", e); }
               finally { setBusyDca(false); }
             },
