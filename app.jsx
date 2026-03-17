@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "18.03.2026, 00:26 Uhr";
+const BUILD_TIMESTAMP = "18.03.2026, 00:42 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -752,7 +752,9 @@ Berücksichtige den Makro-Kontext: VIX>30 = Angst = tendenziell gute Kaufgelegen
 opportunityScore: 1-10 (1=alles teuer, 10=alles im Ausverkauf).
 rebalanceTrades: Umschichtungen nur wenn deutlich übergewichtete Positionen vorhanden UND untergewichtete attraktiver bewertet sind. Kann leer [] sein.
 takeProfits: Gewinnmitnahmen NUR empfehlen wenn das Gesamtportfolio sich in einem Abwärtstrend befindet oder bärisches Sentiment vorherrscht (Makro-Indikatoren negativ, breiter Markt schwächelt). Bei bullischem Sentiment stattdessen Umschichtung in rebalanceTrades vorschlagen (von überhitzter Position in attraktivere umschichten). Kann leer [] sein.
-${extraBudget > 0 ? "extraAllocations: Sonder-Nachkäufe nur bei echten Gelegenheiten. Kann leer [] sein. Nicht das gesamte Budget auf einmal ausgeben müssen." : ""}
+${extraBudget > 0 ? `extraAllocations: Sonder-Nachkäufe nur bei echten Gelegenheiten. Kann leer [] sein.
+WICHTIG zur Budgetdisziplin: Das Sonder-Vermögen beträgt €${extraBudget.toFixed(2)} über ${dcaMonths || 12} Monate. Einzelne Nachkäufe sollten max. 10-15% des Gesamttopfs betragen, es sei denn es liegt ein extremer Ausverkauf vor (Opportunity Score ≥8). Die Gesamtsumme aller extraAllocations darf max. 20-25% des Topfs ausmachen — das Budget soll über den Zeitraum verteilt bleiben. In der "detail"-Begründung MUSS erklärt werden warum die vorgeschlagene Summe in Relation zum Gesamttopf (€${extraBudget.toFixed(2)}) gerechtfertigt ist.` : ""}
+REVALIDIERUNG: Prüfe alle Vorschläge (extraAllocations, rebalanceTrades, takeProfits) nochmals kritisch bevor du antwortest. Frage dich: Ist die Summe verhältnismäßig? Ist der Zeitpunkt wirklich günstig genug? Würde ein erfahrener Portfolio-Manager diesen Trade so machen? Wenn nicht, reduziere oder entferne den Vorschlag.
 Alle Texte deutsch.`,
       "Du bist ein technischer Analyst und Timing-Experte mit Erfahrung in Portfolio-Management. NUR valides JSON. Kein Markdown. Keine Backticks.",
       false,
