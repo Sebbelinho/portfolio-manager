@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "17.03.2026, 23:51 Uhr";
+const BUILD_TIMESTAMP = "17.03.2026, 23:58 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -193,8 +193,25 @@ async function fetchStockData(tickers) {
 
       if (q && q.c && q.c > 0) {
         const fmpVal = (v) => (v !== null && v !== undefined && v !== "NULL" && v !== "" && !isNaN(v)) ? Number(v) : null;
-        const yearHigh = fmpVal(m["52WeekHigh"]);
+        let yearHigh = fmpVal(m["52WeekHigh"]);
         const yearLow = fmpVal(m["52WeekLow"]);
+        // Finnhub 52WeekHigh kann veraltet sein — Korrektur über Candles
+        try {
+          const now = Math.floor(Date.now() / 1000);
+          const yearAgo = now - 365 * 86400;
+          const candleRes = await fetch(`https://finnhub.io/api/v1/stock/candle?symbol=${ticker}&resolution=W&from=${yearAgo}&to=${now}&token=${token}`);
+          const candle = await candleRes.json();
+          if (candle && candle.s === "ok" && Array.isArray(candle.h) && candle.h.length > 0) {
+            const candleHigh = Math.max(...candle.h);
+            if (candleHigh > (yearHigh || 0)) {
+              const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+              debugPush({ ts, label: `${ticker} 52wH korrigiert: $${yearHigh || "n/a"} → $${Math.round(candleHigh * 100) / 100} (Candles)`, status: "ok", fmp: true });
+              yearHigh = Math.round(candleHigh * 100) / 100;
+            }
+          }
+        } catch {}
+        // Fallback: wenn Kurs über 52wH liegt, ist das 52wH falsch
+        if (yearHigh && q.c > yearHigh) yearHigh = q.c;
 
         // Analyst consensus (latest entry)
         const reco = Array.isArray(recoData) && recoData.length > 0 ? recoData[0] : null;
