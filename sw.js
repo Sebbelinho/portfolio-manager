@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ai-monitor-v9';
+const CACHE_NAME = 'ai-monitor-v10';
 
 self.addEventListener('install', () => {
   self.skipWaiting();

@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "17.03.2026, 23:44 Uhr";
+const BUILD_TIMESTAMP = "17.03.2026, 23:51 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -1384,25 +1384,34 @@ function Settings({ onClose }) {
 function DebugPanel({ active }) {
   const log = useDebugLog();
   const endRef = useRef(null);
+  const [manualOpen, setManualOpen] = useState(false);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [log.length]);
   const hasErrors = log.some(l => l.status === "error");
   const hasPending = log.some(l => l.status === "pending");
-  const [, forceUpdate] = useState(0);
-  useEffect(() => {
-    if (!active && !hasErrors && !hasPending && log.length > 0) {
-      const timer = setTimeout(() => forceUpdate(n => n + 1), 10000);
-      return () => clearTimeout(timer);
-    }
-  }, [log.length, active, hasErrors, hasPending]);
-  const hasRecent = log.length > 0 && (Date.now() - (log[log.length - 1]._t || 0)) < 10000;
-  if (log.length === 0 || (!active && !hasErrors && !hasPending && !hasRecent)) return null;
+  // Auto-öffnen bei Aktivität oder Fehlern
+  const autoOpen = active || hasErrors || hasPending;
+  const isOpen = autoOpen || manualOpen;
+  const errorCount = log.filter(l => l.status === "error").length;
+  if (!isOpen) return React.createElement("div", { style: { display: "flex", justifyContent: "center", marginTop: 6 } },
+    React.createElement("button", { onClick: () => setManualOpen(true), style: {
+      background: "none", border: `1px solid ${errorCount > 0 ? X.red + "44" : "#1e293b"}`, borderRadius: 6, cursor: "pointer",
+      padding: "3px 10px", fontSize: 9, color: errorCount > 0 ? X.red : "#475569", fontFamily: "inherit",
+    } }, log.length > 0 ? `Debug (${log.length} Calls${errorCount > 0 ? `, ${errorCount} Fehler` : ""})` : "Debug")
+  );
+  if (log.length === 0 && isOpen) return React.createElement("div", { style: { background: "#0d1117", border: "1px solid #1e293b", borderRadius: 10, padding: 12, marginTop: 10 } },
+    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+      React.createElement("span", { style: { fontSize: 11, color: "#475569" } }, "Keine API-Calls seit letztem Reload"),
+      React.createElement("button", { onClick: () => setManualOpen(false), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1 } }, "✕")
+    )
+  );
   const statCol = { ok: X.green, error: X.red, pending: X.yellow };
   const statLabel = { ok: "✓", error: "✕", pending: "⟳" };
   return React.createElement("div", { style: { background: "#0d1117", border: "1px solid #1e293b", borderRadius: 10, padding: 12, marginTop: 10, maxHeight: 220, overflowY: "auto" } },
     React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 } },
       React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, `API Debug (${log.length} Calls)`),
-      React.createElement("span", { className: "m", style: { fontSize: 10, color: X.red } },
-        log.filter(l => l.status === "error").length > 0 ? `${log.filter(l => l.status === "error").length} Fehler` : ""
+      React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
+        errorCount > 0 && React.createElement("span", { className: "m", style: { fontSize: 10, color: X.red } }, `${errorCount} Fehler`),
+        !autoOpen && React.createElement("button", { onClick: () => setManualOpen(false), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 14, padding: 0, lineHeight: 1 } }, "✕")
       )
     ),
     log.map((entry, i) =>
