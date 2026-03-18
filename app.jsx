@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "18.03.2026, 00:42 Uhr";
+const BUILD_TIMESTAMP = "18.03.2026, 01:11 Uhr";
 
 /* ═══ HELPERS ═══ */
 const delay = (ms) => new Promise(r => setTimeout(r, ms));
@@ -1177,7 +1177,7 @@ function EarningsBanner({ dates, onUpdate, busy }) {
     ),
 
     // Hyperscaler-Zeilen
-    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 6 } },
+    React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
       sorted.map(([ticker, info]) => {
         const days = daysUntil(info.date);
         const isReported = info.reported;
@@ -1193,27 +1193,23 @@ function EarningsBanner({ dates, onUpdate, busy }) {
         return React.createElement("div", {
           key: ticker,
           style: {
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "5px 8px", borderRadius: 6,
-            background: isReported ? `${X.green}08` : isPast ? `${X.orange}10` : "#0f172a44",
-            border: `1px solid ${isReported ? X.green + "22" : "#1e293b"}`,
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "5px 12px", borderRadius: 16,
+            background: isReported ? `${X.green}08` : isPast ? `${X.orange}10` : `${dayColor}08`,
+            border: `1px solid ${isReported ? X.green + "22" : dayColor + "33"}`,
             opacity: isReported ? 0.6 : 1,
           }
         },
-          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, minWidth: 0 } },
-            React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: "#e2e8f0", whiteSpace: "nowrap" } }, ticker),
-            React.createElement("span", { style: { fontSize: 9, color: "#64748b" } },
-              new Date(info.date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })
-            ),
-            info.confirmed && React.createElement("span", { style: { fontSize: 8, color: X.green }, title: "Termin per Web-Suche bestätigt" }, "✓")
+          React.createElement("span", { className: "m", style: { fontSize: 11, fontWeight: 700, color: dayColor } }, ticker),
+          React.createElement("span", { style: { fontSize: 10, color: "#94a3b8" } },
+            new Date(info.date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })
           ),
-          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
-            React.createElement("span", { style: { fontSize: 10, fontWeight: 700, color: dayColor, fontFamily: "'JetBrains Mono',monospace" } }, dayText),
-            !isReported && isPast && React.createElement("button", {
-              onClick: () => handleMarkReported(ticker),
-              style: { background: `${X.green}18`, border: `1px solid ${X.green}33`, borderRadius: 4, color: X.green, fontSize: 8, padding: "2px 5px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600 }
-            }, "✓ reported")
-          )
+          React.createElement("span", { className: "m", style: { fontSize: 11, fontWeight: 700, color: dayColor } }, dayText),
+          info.confirmed && React.createElement("span", { style: { fontSize: 9, color: X.green }, title: "Bestätigt" }, "✓"),
+          !isReported && isPast && React.createElement("button", {
+            onClick: () => handleMarkReported(ticker),
+            style: { background: `${X.green}18`, border: `1px solid ${X.green}33`, borderRadius: 10, color: X.green, fontSize: 8, padding: "2px 6px", cursor: "pointer", fontFamily: "inherit", fontWeight: 600, marginLeft: -4 }
+          }, "reported")
         );
       })
     ),
@@ -1300,6 +1296,7 @@ function Settings({ onClose }) {
   const [fredKeyState, setFredKeyState] = useState(getFredKey());
   const [fredResult, setFredResult] = useState(null);
   const [fredProxyState, setFredProxyState] = useState(getFredProxy());
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const saveKey = () => { setApiKey(key); setTestResult({ ok: true, msg: "Gespeichert!" }); };
   const saveFmpKey = () => { setFmpKey(fmpKey); setFmpResult({ ok: true, msg: "Gespeichert!" }); };
@@ -1332,7 +1329,7 @@ function Settings({ onClose }) {
     setTesting(false);
   };
 
-  const resetData = () => { if (confirm("Alle Recherche-Daten löschen?")) { localStorage.removeItem(STORE_KEY); location.reload(); } };
+  const resetData = () => { localStorage.removeItem(STORE_KEY); location.reload(); };
 
   const inp = { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "9px 12px", fontSize: 13, color: "#e2e8f0", width: "100%", fontFamily: "'JetBrains Mono', monospace" };
   const btn = (bg, col) => ({ padding: "9px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, background: bg, color: col, fontFamily: "inherit", width: "100%" });
@@ -1341,9 +1338,10 @@ function Settings({ onClose }) {
     React.createElement("div", { style: { background: "#111827", borderRadius: 16, border: "1px solid #1e293b", padding: 24, maxWidth: 440, width: "100%", maxHeight: "90vh", overflowY: "auto" } },
       React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 } },
         React.createElement("h2", { style: { fontSize: 18, fontWeight: 700, margin: 0 } }, "Einstellungen"),
-        React.createElement("button", { onClick: onClose, style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 18 } }, "✕")
+        React.createElement("button", { onClick: onClose, style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 18, minWidth: 32, minHeight: 32, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6 } }, "✕")
       ),
       React.createElement("div", { style: { marginBottom: 20 } },
+        React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.purple, marginBottom: 10, textTransform: "uppercase", letterSpacing: ".06em" } }, "API-Zugänge"),
         React.createElement("label", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 6, display: "block" } }, "Anthropic API Key"),
         React.createElement("input", { type: "password", value: key, onChange: e => setKey(e.target.value), placeholder: "sk-ant-...", style: inp }),
         React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 } },
@@ -1392,7 +1390,7 @@ function Settings({ onClose }) {
         fredResult && React.createElement("div", { style: { marginTop: 8, fontSize: 12, color: fredResult.ok ? X.green : X.red, padding: "6px 10px", borderRadius: 8, background: fredResult.ok ? `${X.green}15` : `${X.red}15` } }, fredResult.msg)
       ),
       React.createElement("div", { style: { borderTop: "1px solid #1e293b", paddingTop: 16, marginBottom: 20 } },
-        React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 4 } }, "Portfolio Export / Import"),
+        React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.purple, marginBottom: 10, textTransform: "uppercase", letterSpacing: ".06em" } }, "Datenverwaltung"),
         React.createElement("div", { style: { fontSize: 10, color: "#475569", marginBottom: 10 } }, "Exportiert alle Aktien mit Käufen, Nachkäufen, Preisen und Metadaten als JSON-Datei."),
         React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
           React.createElement("button", { onClick: () => {
@@ -1429,8 +1427,16 @@ function Settings({ onClose }) {
         )
       ),
       React.createElement("div", { style: { borderTop: "1px solid #1e293b", paddingTop: 16 } },
-        React.createElement("div", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, "Gefahrenzone"),
-        React.createElement("button", { onClick: resetData, style: btn(`${X.orange}22`, X.orange) }, "Daten zurücksetzen")
+        React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.orange, marginBottom: 10, textTransform: "uppercase", letterSpacing: ".06em" } }, "Gefahrenzone"),
+        !showResetConfirm
+          ? React.createElement("button", { onClick: () => setShowResetConfirm(true), style: btn(`${X.orange}22`, X.orange) }, "Daten zurücksetzen")
+          : React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "12px 14px" } },
+              React.createElement("div", { style: { fontSize: 12, color: "#e2e8f0", marginBottom: 10, lineHeight: 1.6 } }, "Alle Recherche-Daten unwiderruflich löschen?"),
+              React.createElement("div", { style: { display: "flex", gap: 8 } },
+                React.createElement("button", { onClick: resetData, style: { flex: 1, padding: 8, borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "inherit", background: `linear-gradient(135deg,${X.red},${X.orange})`, color: "#fff" } }, "Ja, löschen"),
+                React.createElement("button", { onClick: () => setShowResetConfirm(false), style: { flex: 1, padding: 8, borderRadius: 8, border: "1px solid #334155", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#94a3b8" } }, "Abbrechen")
+              )
+            )
       )
     )
   );
@@ -1576,6 +1582,9 @@ function App() {
   const [busyVerify, setBusyVerify] = useState(false);
   const [earningsDates, setEarningsDates] = useState(() => loadEarningsDates());
   const [showRunConfirm, setShowRunConfirm] = useState(false);
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [stepNum, setStepNum] = useState(0);
+  const [totalSteps, setTotalSteps] = useState(0);
 
   const updateEarningsDates = useCallback((newDates) => {
     setEarningsDates(newDates);
@@ -1799,8 +1808,9 @@ function App() {
     const hasFmp = !!getFmpKey();
     const hasFred = !!getFredKey();
     const total = (hasFmp ? 1 : 0) + (hasFred || hasFmp ? 1 : 0) + 2 + 2 + stocks.length + 1 + 1 + 2;
+    setTotalSteps(total);
 
-    const advance = (label) => { step++; setStepName(label); setPct(Math.round((step / total) * 100)); };
+    const advance = (label) => { step++; setStepNum(step); setStepName(label); setPct(Math.round((step / total) * 100)); };
 
     // Phase 0: Finnhub Fundamentaldaten + Insider laden
     let fmpData = {};
@@ -2206,12 +2216,12 @@ Antworte NUR mit validem JSON:
       })(),
 
       busy && React.createElement("div", { style: { marginTop: 6, marginBottom: 6 } },
-        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 3 } },
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } },
           React.createElement("span", { style: { fontSize: 11, color: "#94a3b8" } }, stepName),
-          React.createElement("span", { className: "m", style: { fontSize: 11, color: X.indigo } }, `${pct}%`)
+          React.createElement("span", { className: "m", style: { fontSize: 11, color: X.indigo } }, totalSteps > 0 ? `${stepNum}/${totalSteps} (${pct}%)` : `${pct}%`)
         ),
-        React.createElement("div", { style: { height: 4, background: "#1e293b", borderRadius: 2, overflow: "hidden" } },
-          React.createElement("div", { style: { height: "100%", width: `${pct}%`, borderRadius: 2, background: `linear-gradient(90deg,${X.indigo},${X.purple})`, transition: "width .4s" } })
+        React.createElement("div", { style: { height: 5, background: "#1e293b", borderRadius: 3, overflow: "hidden" } },
+          React.createElement("div", { style: { height: "100%", width: `${pct}%`, borderRadius: 3, background: `linear-gradient(90deg,${X.indigo},${X.purple})`, transition: "width .4s" } })
         )
       ),
 
@@ -2232,11 +2242,11 @@ Antworte NUR mit validem JSON:
       React.createElement(DebugPanel, { active: busy || busyTiming || busyDca }),
 
       /* ── TABS ── */
-      React.createElement("div", { style: { display: "flex", gap: 2, margin: "10px 0 14px", background: "#111827", borderRadius: 10, padding: 3 } },
+      React.createElement("div", { className: "tab-strip", style: { display: "flex", gap: 2, margin: "10px 0 14px", background: "#111827", borderRadius: 10, padding: 3, overflowX: "auto", WebkitOverflowScrolling: "touch" } },
         TABS.map(([id, label]) =>
           React.createElement("button", { key: id, onClick: () => setTab(id), style: {
-            flex: 1, padding: "7px 2px", borderRadius: 8, border: "none", cursor: "pointer",
-            fontSize: 10, fontWeight: 600, fontFamily: "inherit", whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis",
+            padding: "7px 10px", borderRadius: 8, border: "none", cursor: "pointer",
+            fontSize: 11, fontWeight: 600, fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0,
             background: tab === id ? "#1e293b" : "transparent",
             color: tab === id ? "#e2e8f0" : "#64748b",
           } }, `${label}${id === "alerts" && alertsLive ? ` (${analysis.alerts.length})` : ""}${id === "positions" ? ` (${stocks.length})` : ""}`)
@@ -2254,12 +2264,12 @@ Antworte NUR mit validem JSON:
             React.createElement("div", { key: i, style: { background: "#111827", borderRadius: 12, padding: "12px 11px", border: c.warn ? `2px solid ${X.orange}` : "1px solid #1e293b", minWidth: 0, overflow: "hidden", position: "relative" } },
               React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } },
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
-                  React.createElement("span", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, c.l),
+                  React.createElement("span", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, c.l),
                   c.warn && React.createElement("span", { title: `Unvollständige Daten: ${incompleteStocks.map(s => s.ticker).join(", ")} — Kaufpreis/Aktie oder Kaufdatum fehlt`, style: { color: X.orange, fontSize: 12, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => { setTab("positions"); } }, "⚠")
                 ),
                 c.info && React.createElement("button", { onClick: () => setShowDashInfo(!showDashInfo), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10, padding: 0, lineHeight: 1 } }, "ⓘ")
               ),
-              React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: c.c || "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, c.v),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: c.c || "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, c.v),
               c.s && React.createElement("div", { style: { fontSize: 10, color: c.c || "#475569", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, c.s),
               c.info && showDashInfo && React.createElement("div", { style: { position: "absolute", top: "100%", left: 0, right: 0, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, zIndex: 10, marginTop: 4, fontSize: 11, color: "#94a3b8" } },
                 React.createElement("div", null, `Investiert: €${totalInvested.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
@@ -2277,33 +2287,33 @@ Antworte NUR mit validem JSON:
         /* Macro Context Strip on Overview */
         (macro || marketIndicators) && React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 12 } },
           macro?.fedFundsRate && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: "1px solid #1e293b", padding: "8px 10px", textAlign: "center" } },
-            React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Fed Rate"),
+            React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Fed Rate"),
             React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.fedFundsRate.current}%`),
             macro.fedFundsRate.previous != null && React.createElement("div", { style: { fontSize: 9, color: macro.fedFundsRate.current > macro.fedFundsRate.previous ? X.orange : macro.fedFundsRate.current < macro.fedFundsRate.previous ? X.green : "#475569" } }, macro.fedFundsRate.current > macro.fedFundsRate.previous ? "▲ Steigend" : macro.fedFundsRate.current < macro.fedFundsRate.previous ? "▼ Fallend" : "▶ Stabil")
           ),
           marketIndicators?.vix && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${marketIndicators.vix.changePct > 5 ? X.red + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
-            React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "VIXY"),
+            React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "VIX"),
             React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: marketIndicators.vix.changePct > 5 ? X.red : marketIndicators.vix.changePct < -5 ? X.green : "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${marketIndicators.vix.changePct >= 0 ? "+" : ""}${marketIndicators.vix.changePct?.toFixed(1)}%`)
           ),
           macro?.yieldSpread && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${macro.yieldSpread.status === "inverted" ? X.red + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
-            React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Yield Curve"),
+            React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Yield Curve"),
             React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: macro.yieldSpread.status === "inverted" ? X.red : macro.yieldSpread.status === "flat" ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, macro.yieldSpread.status === "inverted" ? "Invertiert" : macro.yieldSpread.status === "flat" ? "Flach" : "Normal")
           ),
           marketIndicators?.xlk && marketIndicators?.spy && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: "1px solid #1e293b", padding: "8px 10px", textAlign: "center" } },
-            React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Tech-Trend"),
+            React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Tech-Trend"),
             React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: (marketIndicators.xlk.changePct - marketIndicators.spy.changePct) >= 0 ? X.green : X.red, fontFamily: "'JetBrains Mono', monospace" } }, `${(marketIndicators.xlk.changePct - marketIndicators.spy.changePct) >= 0 ? "+" : ""}${(marketIndicators.xlk.changePct - marketIndicators.spy.changePct).toFixed(1)}%`)
           )
         ),
 
         hasData && React.createElement(React.Fragment, null,
           React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${X[analysis.overallStatus]}33`, padding: 15, marginBottom: 10 } },
-            React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: X[analysis.overallStatus], marginBottom: 8 } }, "AI-Gesamtanalyse"),
+            React.createElement("div", { style: { fontSize: 15, fontWeight: 700, color: X[analysis.overallStatus], marginBottom: 8 } }, "AI-Gesamtanalyse"),
             React.createElement("p", { style: { fontSize: 12, color: "#c8d0dc", lineHeight: 1.7, margin: "0 0 10px" } }, analysis.explanation),
             React.createElement("div", { style: { fontSize: 12, fontWeight: 600, marginBottom: 3 } }, "Empfohlene Aktion:"),
             React.createElement("div", { style: { fontSize: 12, color: X.purple, lineHeight: 1.5 } }, analysis.action)
           ),
           analysis.risks?.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 15 } },
-            React.createElement("div", { style: { fontSize: 13, fontWeight: 600, marginBottom: 8 } }, "Top-Risiken"),
+            React.createElement("div", { style: { fontSize: 15, fontWeight: 600, marginBottom: 8 } }, "Top-Risiken"),
             analysis.risks.map((r, i) => React.createElement("div", { key: i, style: { display: "flex", gap: 6, marginBottom: 5, fontSize: 12, color: "#94a3b8", lineHeight: 1.5 } },
               React.createElement("span", { style: { color: X.orange } }, "▸"), String(r)
             ))
@@ -2311,8 +2321,8 @@ Antworte NUR mit validem JSON:
         ),
         !hasData && !busy && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 28, textAlign: "center" } },
           React.createElement("div", { style: { fontSize: 28, marginBottom: 10 } }, "◉"),
-          React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 5 } }, "Starte die Live-Recherche"),
-          React.createElement("div", { style: { fontSize: 12, color: "#64748b", lineHeight: 1.6 } }, `Claude durchsucht das Web nach CapEx-Daten und analysiert alle ${stocks.length} Positionen.`)
+          React.createElement("div", { style: { fontSize: 15, fontWeight: 600, marginBottom: 5 } }, "Starte die Komplettanalyse"),
+          React.createElement("div", { style: { fontSize: 13, color: "#64748b", lineHeight: 1.6 } }, `Claude durchsucht das Web nach CapEx-Daten und analysiert alle ${stocks.length} Positionen.`)
         )
       ),
 
@@ -2364,7 +2374,11 @@ Antworte NUR mit validem JSON:
               r.keyPoints.slice(0, 3).map((p, j) => React.createElement("span", { key: j, style: { fontSize: 10, padding: "3px 8px", borderRadius: 6, background: "#1e293b", color: X.purple } }, String(p).slice(0, 70)))
             )
           )
-        ) : React.createElement("p", { style: { textAlign: "center", color: "#475569", fontSize: 12, padding: 20 } }, "Recherche starten"),
+        ) : React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 28, textAlign: "center" } },
+          React.createElement("div", { style: { fontSize: 28, marginBottom: 10 } }, "◉"),
+          React.createElement("div", { style: { fontSize: 15, fontWeight: 600, marginBottom: 5 } }, "Keine CapEx-Daten"),
+          React.createElement("div", { style: { fontSize: 13, color: "#64748b", lineHeight: 1.6 } }, "Starte die Komplettanalyse für CapEx-Einzelanalysen der Hyperscaler.")
+        ),
         React.createElement("div", { style: { fontSize: 13, fontWeight: 700, color: X.purple, margin: "14px 0 8px" } }, "Leitindikatoren"),
         tsmc && React.createElement(RCard, { t: "TSMC Monatsumsätze", d: tsmc }),
         dram && React.createElement(RCard, { t: "DRAM Spotpreise", d: dram })
@@ -2378,22 +2392,22 @@ Antworte NUR mit validem JSON:
           React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.purple, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" } }, "Zinsen & Yield Curve"),
           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 } },
             macro.fedFundsRate && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Fed Funds Rate"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.fedFundsRate.current}%`),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Fed Funds Rate"),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.fedFundsRate.current}%`),
               macro.fedFundsRate.previous != null && React.createElement("div", { style: { fontSize: 10, color: macro.fedFundsRate.current > macro.fedFundsRate.previous ? X.red : macro.fedFundsRate.current < macro.fedFundsRate.previous ? X.green : "#64748b", marginTop: 2 } }, `Vorher: ${macro.fedFundsRate.previous}%`)
             ),
             macro.yieldSpread && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${macro.yieldSpread.status === "inverted" ? X.red + "44" : macro.yieldSpread.status === "flat" ? X.yellow + "44" : "#1e293b"}`, padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Yield Spread (10Y-2Y)"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: macro.yieldSpread.status === "inverted" ? X.red : macro.yieldSpread.status === "flat" ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, `${macro.yieldSpread.current}%`),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Yield Spread (10Y-2Y)"),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: macro.yieldSpread.status === "inverted" ? X.red : macro.yieldSpread.status === "flat" ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, `${macro.yieldSpread.current}%`),
               React.createElement("div", { style: { fontSize: 10, color: macro.yieldSpread.status === "inverted" ? X.red : macro.yieldSpread.status === "flat" ? X.yellow : X.green, marginTop: 2 } }, macro.yieldSpread.status === "inverted" ? "⚠ Invertiert — Rezessionsrisiko" : macro.yieldSpread.status === "flat" ? "◈ Flach — Beobachten" : "✓ Normal")
             ),
             macro.treasury2y && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Treasury 2Y"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.treasury2y.current}%`)
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Treasury 2Y"),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.treasury2y.current}%`)
             ),
             macro.treasury10y && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Treasury 10Y"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.treasury10y.current}%`)
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Treasury 10Y"),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.treasury10y.current}%`)
             )
           ),
 
@@ -2401,13 +2415,13 @@ Antworte NUR mit validem JSON:
           React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.orange, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" } }, "Inflation"),
           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 } },
             macro.cpiYoy && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "CPI (Verbraucherpreise)"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: (macro.cpiYoy.yoy || 0) > 3 ? X.red : (macro.cpiYoy.yoy || 0) > 2.5 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, macro.cpiYoy.yoy != null ? `${macro.cpiYoy.yoy}% YoY` : `${macro.cpiYoy.current}`),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "CPI (Verbraucherpreise)"),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: (macro.cpiYoy.yoy || 0) > 3 ? X.red : (macro.cpiYoy.yoy || 0) > 2.5 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, macro.cpiYoy.yoy != null ? `${macro.cpiYoy.yoy}% YoY` : `${macro.cpiYoy.current}`),
               React.createElement("div", { style: { fontSize: 10, color: "#64748b", marginTop: 2 } }, `Stand: ${macro.cpiYoy.date}`)
             ),
             macro.corePce && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Core PCE (Fed-Maß)"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: (macro.corePce.yoy || 0) > 3 ? X.red : (macro.corePce.yoy || 0) > 2.5 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, macro.corePce.yoy != null ? `${macro.corePce.yoy}% YoY` : `${macro.corePce.current}`),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Core PCE (Fed-Maß)"),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: (macro.corePce.yoy || 0) > 3 ? X.red : (macro.corePce.yoy || 0) > 2.5 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, macro.corePce.yoy != null ? `${macro.corePce.yoy}% YoY` : `${macro.corePce.current}`),
               React.createElement("div", { style: { fontSize: 10, color: "#64748b", marginTop: 2 } }, `Stand: ${macro.corePce.date}`)
             )
           ),
@@ -2416,20 +2430,20 @@ Antworte NUR mit validem JSON:
           React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.cyan, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" } }, "Wirtschaft"),
           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 } },
             macro.gdp && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "GDP (Mrd. $)"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${(macro.gdp.current / 1000).toFixed(1)}T`),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "GDP (Mrd. $)"),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${(macro.gdp.current / 1000).toFixed(1)}T`),
               macro.gdp.previous && React.createElement("div", { style: { fontSize: 10, color: macro.gdp.current > macro.gdp.previous ? X.green : X.red, marginTop: 2 } }, `${macro.gdp.current > macro.gdp.previous ? "▲" : "▼"} Vorher: ${(macro.gdp.previous / 1000).toFixed(1)}T`)
             ),
             macro.unemployment && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Arbeitslosenquote"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: macro.unemployment.current > 5 ? X.red : macro.unemployment.current > 4 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, `${macro.unemployment.current}%`),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Arbeitslosenquote"),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: macro.unemployment.current > 5 ? X.red : macro.unemployment.current > 4 ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, `${macro.unemployment.current}%`),
               macro.unemployment.previous != null && React.createElement("div", { style: { fontSize: 10, color: macro.unemployment.current > macro.unemployment.previous ? X.red : X.green, marginTop: 2 } }, `Vorher: ${macro.unemployment.previous}%`)
             )
           )
         ) : React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 28, textAlign: "center" } },
-          React.createElement("div", { style: { fontSize: 28, marginBottom: 10 } }, "📊"),
-          React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 5 } }, getFredKey() ? "Recherche starten für Makro-Daten" : "FRED API Key benötigt"),
-          React.createElement("div", { style: { fontSize: 12, color: "#64748b", lineHeight: 1.6 } }, getFredKey() ? "Starte die Live-Recherche, um Zinsen, Yield Curve, Inflation und Arbeitsmarkt zu laden." : "Kostenlos auf fred.stlouisfed.org — in den Einstellungen hinterlegen.")
+          React.createElement("div", { style: { fontSize: 28, marginBottom: 10 } }, "◉"),
+          React.createElement("div", { style: { fontSize: 15, fontWeight: 600, marginBottom: 5 } }, getFredKey() ? "Recherche starten für Makro-Daten" : "FRED API Key benötigt"),
+          React.createElement("div", { style: { fontSize: 13, color: "#64748b", lineHeight: 1.6 } }, getFredKey() ? "Starte die Komplettanalyse, um Zinsen, Yield Curve, Inflation und Arbeitsmarkt zu laden." : "Kostenlos auf fred.stlouisfed.org — in den Einstellungen hinterlegen.")
         ),
 
         /* VIX + Sektor-ETFs */
@@ -2437,24 +2451,24 @@ Antworte NUR mit validem JSON:
           React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.indigo, marginBottom: 8, textTransform: "uppercase", letterSpacing: ".06em" } }, "Marktindikatoren (Finnhub)"),
           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginBottom: 14 } },
             marketIndicators.vix && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${marketIndicators.vix.changePct > 10 ? X.red + "44" : marketIndicators.vix.changePct > 5 ? X.yellow + "44" : "#1e293b"}`, padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "VIXY (Volatilität)"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `$${marketIndicators.vix.price.toFixed(2)}`),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "VIX (Volatilität)"),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `$${marketIndicators.vix.price.toFixed(2)}`),
               React.createElement("div", { style: { fontSize: 10, color: marketIndicators.vix.changePct > 5 ? X.red : marketIndicators.vix.changePct < -5 ? X.green : "#64748b", marginTop: 2 } }, `${marketIndicators.vix.changePct >= 0 ? "+" : ""}${marketIndicators.vix.changePct?.toFixed(1)}% — ${marketIndicators.vix.changePct > 5 ? "Angst steigt" : marketIndicators.vix.changePct < -5 ? "Angst fällt" : "Stabil"}`)
             ),
             marketIndicators.spy && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "S&P 500 (SPY)"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `$${marketIndicators.spy.price}`),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "S&P 500 (SPY)"),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `$${marketIndicators.spy.price}`),
               React.createElement("div", { style: { fontSize: 10, color: marketIndicators.spy.changePct >= 0 ? X.green : X.red, marginTop: 2 } }, `${marketIndicators.spy.changePct >= 0 ? "+" : ""}${marketIndicators.spy.changePct?.toFixed(2)}%`)
             ),
             marketIndicators.xlk && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Tech-Sektor (XLK)"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `$${marketIndicators.xlk.price}`),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Tech-Sektor (XLK)"),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `$${marketIndicators.xlk.price}`),
               React.createElement("div", { style: { fontSize: 10, color: marketIndicators.xlk.changePct >= 0 ? X.green : X.red, marginTop: 2 } }, `${marketIndicators.xlk.changePct >= 0 ? "+" : ""}${marketIndicators.xlk.changePct?.toFixed(2)}%`),
               marketIndicators.spy && React.createElement("div", { style: { fontSize: 9, color: (marketIndicators.xlk.changePct - marketIndicators.spy.changePct) >= 0 ? X.green : X.orange, marginTop: 2 } }, `vs S&P: ${(marketIndicators.xlk.changePct - marketIndicators.spy.changePct) >= 0 ? "+" : ""}${(marketIndicators.xlk.changePct - marketIndicators.spy.changePct).toFixed(2)}%`)
             ),
             marketIndicators.smh && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 13 } },
-              React.createElement("div", { style: { fontSize: 9, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Halbleiter (SMH)"),
-              React.createElement("div", { style: { fontSize: 18, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `$${marketIndicators.smh.price}`),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 4 } }, "Halbleiter (SMH)"),
+              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `$${marketIndicators.smh.price}`),
               React.createElement("div", { style: { fontSize: 10, color: marketIndicators.smh.changePct >= 0 ? X.green : X.red, marginTop: 2 } }, `${marketIndicators.smh.changePct >= 0 ? "+" : ""}${marketIndicators.smh.changePct?.toFixed(2)}%`),
               marketIndicators.spy && React.createElement("div", { style: { fontSize: 9, color: (marketIndicators.smh.changePct - marketIndicators.spy.changePct) >= 0 ? X.green : X.orange, marginTop: 2 } }, `vs S&P: ${(marketIndicators.smh.changePct - marketIndicators.spy.changePct) >= 0 ? "+" : ""}${(marketIndicators.smh.changePct - marketIndicators.spy.changePct).toFixed(2)}%`)
             )
@@ -2576,7 +2590,14 @@ Antworte NUR mit validem JSON:
                 ),
                 React.createElement("button", { onClick: () => setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", color: "#64748b", fontSize: 12, flexShrink: 0 } }, "ⓘ"),
                 React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
-                React.createElement("button", { onClick: () => { if (confirm(`${pos.name} (${pos.ticker}) unwiderruflich aus dem Portfolio löschen?`)) removeStock(pos.ticker); }, style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
+                React.createElement("button", { onClick: () => setConfirmAction({ type: "removeStock", ticker: pos.ticker, name: pos.name }), style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
+              )
+            ),
+            confirmAction?.type === "removeStock" && confirmAction.ticker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "12px 14px", marginTop: 6 } },
+              React.createElement("div", { style: { fontSize: 12, color: "#e2e8f0", marginBottom: 10, lineHeight: 1.6 } }, `${pos.name} (${pos.ticker}) unwiderruflich löschen?`),
+              React.createElement("div", { style: { display: "flex", gap: 8 } },
+                React.createElement("button", { onClick: () => { removeStock(pos.ticker); setConfirmAction(null); }, style: { flex: 1, padding: 8, borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "inherit", background: `linear-gradient(135deg,${X.red},${X.orange})`, color: "#fff" } }, "Ja, löschen"),
+                React.createElement("button", { onClick: () => setConfirmAction(null), style: { flex: 1, padding: 8, borderRadius: 8, border: "1px solid #334155", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#94a3b8" } }, "Abbrechen")
               )
             ),
             infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
@@ -2623,11 +2644,20 @@ Antworte NUR mit validem JSON:
                         React.createElement("button", { onClick: () => { const upd = {}; if (editNkAmount) upd.amount = parseFloat(editNkAmount); if (editNkPPS) upd.pricePerShare = parseFloat(editNkPPS); if (editNkDate) upd.date = editNkDate; updateNachkauf(pos.ticker, i, upd); }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
                         React.createElement("button", { onClick: () => setEditingNachkauf(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10 } }, "Abb.")
                       )
-                    : React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 } },
-                        React.createElement("span", null, `${new Date(p.date).toLocaleDateString("de-DE")}: €${p.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${p.pricePerShare?.toFixed(2) || "?"}`),
-                        React.createElement("span", { style: { display: "flex", gap: 4, flexShrink: 0 } },
-                          React.createElement("button", { onClick: () => { setEditingNachkauf(`${pos.ticker}-${i}`); setEditNkAmount(String(p.amount)); setEditNkPPS(String(p.pricePerShare || "")); setEditNkDate(p.date || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10 } }, "✎"),
-                          React.createElement("button", { onClick: () => { if (confirm(`Nachkauf vom ${new Date(p.date).toLocaleDateString("de-DE")} löschen?`)) removeNachkauf(pos.ticker, i); }, style: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 10 } }, "✕")
+                    : React.createElement(React.Fragment, { key: i },
+                        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 } },
+                          React.createElement("span", null, `${new Date(p.date).toLocaleDateString("de-DE")}: €${p.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${p.pricePerShare?.toFixed(2) || "?"}`),
+                          React.createElement("span", { style: { display: "flex", gap: 4, flexShrink: 0 } },
+                            React.createElement("button", { onClick: () => { setEditingNachkauf(`${pos.ticker}-${i}`); setEditNkAmount(String(p.amount)); setEditNkPPS(String(p.pricePerShare || "")); setEditNkDate(p.date || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10 } }, "✎"),
+                            React.createElement("button", { onClick: () => setConfirmAction({ type: "removeNachkauf", ticker: pos.ticker, index: i, date: new Date(p.date).toLocaleDateString("de-DE") }), style: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 10 } }, "✕")
+                          )
+                        ),
+                        confirmAction?.type === "removeNachkauf" && confirmAction.ticker === pos.ticker && confirmAction.index === i && React.createElement("div", { style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", marginTop: 4 } },
+                          React.createElement("div", { style: { fontSize: 11, color: "#e2e8f0", marginBottom: 8 } }, `Nachkauf vom ${confirmAction.date} löschen?`),
+                          React.createElement("div", { style: { display: "flex", gap: 6 } },
+                            React.createElement("button", { onClick: () => { removeNachkauf(pos.ticker, i); setConfirmAction(null); }, style: { flex: 1, padding: 6, borderRadius: 6, border: "none", cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "inherit", background: `${X.red}33`, color: X.red } }, "Löschen"),
+                            React.createElement("button", { onClick: () => setConfirmAction(null), style: { flex: 1, padding: 6, borderRadius: 6, border: "1px solid #334155", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#94a3b8" } }, "Abbrechen")
+                          )
                         )
                       )
                 )
@@ -2674,7 +2704,14 @@ Antworte NUR mit validem JSON:
                   ),
                   React.createElement("button", { onClick: () => setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", color: "#64748b", fontSize: 12, flexShrink: 0 } }, "ⓘ"),
                   React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
-                  React.createElement("button", { onClick: () => { if (confirm(`${pos.name} (${pos.ticker}) unwiderruflich aus dem Portfolio löschen?`)) removeStock(pos.ticker); }, style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
+                  React.createElement("button", { onClick: () => setConfirmAction({ type: "removeStock", ticker: pos.ticker, name: pos.name }), style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
+                )
+              ),
+              confirmAction?.type === "removeStock" && confirmAction.ticker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "12px 14px", marginTop: 6 } },
+                React.createElement("div", { style: { fontSize: 12, color: "#e2e8f0", marginBottom: 10, lineHeight: 1.6 } }, `${pos.name} (${pos.ticker}) unwiderruflich löschen?`),
+                React.createElement("div", { style: { display: "flex", gap: 8 } },
+                  React.createElement("button", { onClick: () => { removeStock(pos.ticker); setConfirmAction(null); }, style: { flex: 1, padding: 8, borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "inherit", background: `linear-gradient(135deg,${X.red},${X.orange})`, color: "#fff" } }, "Ja, löschen"),
+                  React.createElement("button", { onClick: () => setConfirmAction(null), style: { flex: 1, padding: 8, borderRadius: 8, border: "1px solid #334155", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#94a3b8" } }, "Abbrechen")
                 )
               ),
               infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
@@ -2719,11 +2756,20 @@ Antworte NUR mit validem JSON:
                           React.createElement("button", { onClick: () => { const upd = {}; if (editNkAmount) upd.amount = parseFloat(editNkAmount); if (editNkPPS) upd.pricePerShare = parseFloat(editNkPPS); if (editNkDate) upd.date = editNkDate; updateNachkauf(pos.ticker, i, upd); }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
                           React.createElement("button", { onClick: () => setEditingNachkauf(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10 } }, "Abb.")
                         )
-                      : React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 } },
-                          React.createElement("span", null, `${new Date(p.date).toLocaleDateString("de-DE")}: €${p.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${p.pricePerShare?.toFixed(2) || "?"}`),
-                          React.createElement("span", { style: { display: "flex", gap: 4, flexShrink: 0 } },
-                            React.createElement("button", { onClick: () => { setEditingNachkauf(`${pos.ticker}-${i}`); setEditNkAmount(String(p.amount)); setEditNkPPS(String(p.pricePerShare || "")); setEditNkDate(p.date || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10 } }, "✎"),
-                            React.createElement("button", { onClick: () => { if (confirm(`Nachkauf vom ${new Date(p.date).toLocaleDateString("de-DE")} löschen?`)) removeNachkauf(pos.ticker, i); }, style: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 10 } }, "✕")
+                      : React.createElement(React.Fragment, { key: i },
+                          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 } },
+                            React.createElement("span", null, `${new Date(p.date).toLocaleDateString("de-DE")}: €${p.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${p.pricePerShare?.toFixed(2) || "?"}`),
+                            React.createElement("span", { style: { display: "flex", gap: 4, flexShrink: 0 } },
+                              React.createElement("button", { onClick: () => { setEditingNachkauf(`${pos.ticker}-${i}`); setEditNkAmount(String(p.amount)); setEditNkPPS(String(p.pricePerShare || "")); setEditNkDate(p.date || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10 } }, "✎"),
+                              React.createElement("button", { onClick: () => setConfirmAction({ type: "removeNachkauf", ticker: pos.ticker, index: i, date: new Date(p.date).toLocaleDateString("de-DE") }), style: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 10 } }, "✕")
+                            )
+                          ),
+                          confirmAction?.type === "removeNachkauf" && confirmAction.ticker === pos.ticker && confirmAction.index === i && React.createElement("div", { style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", marginTop: 4 } },
+                            React.createElement("div", { style: { fontSize: 11, color: "#e2e8f0", marginBottom: 8 } }, `Nachkauf vom ${confirmAction.date} löschen?`),
+                            React.createElement("div", { style: { display: "flex", gap: 6 } },
+                              React.createElement("button", { onClick: () => { removeNachkauf(pos.ticker, i); setConfirmAction(null); }, style: { flex: 1, padding: 6, borderRadius: 6, border: "none", cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "inherit", background: `${X.red}33`, color: X.red } }, "Löschen"),
+                              React.createElement("button", { onClick: () => setConfirmAction(null), style: { flex: 1, padding: 6, borderRadius: 6, border: "1px solid #334155", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#94a3b8" } }, "Abbrechen")
+                            )
                           )
                         )
                   )
@@ -2785,19 +2831,19 @@ Antworte NUR mit validem JSON:
           /* Macro Context Strip */
           (marketIndicators || macro) && React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 12 } },
             marketIndicators?.vix && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${marketIndicators.vix.changePct > 5 ? X.red + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
-              React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "VIXY"),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "VIX"),
               React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: marketIndicators.vix.changePct > 5 ? X.red : marketIndicators.vix.changePct < -5 ? X.green : "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${marketIndicators.vix.changePct >= 0 ? "+" : ""}${marketIndicators.vix.changePct?.toFixed(1)}%`)
             ),
             macro?.yieldSpread && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: `1px solid ${macro.yieldSpread.status === "inverted" ? X.red + "33" : "#1e293b"}`, padding: "8px 10px", textAlign: "center" } },
-              React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Yield"),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Yield"),
               React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: macro.yieldSpread.status === "inverted" ? X.red : macro.yieldSpread.status === "flat" ? X.yellow : X.green, fontFamily: "'JetBrains Mono', monospace" } }, `${macro.yieldSpread.current}%`)
             ),
             marketIndicators?.xlk && marketIndicators?.spy && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: "1px solid #1e293b", padding: "8px 10px", textAlign: "center" } },
-              React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Tech vs S&P"),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Tech vs S&P"),
               React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: (marketIndicators.xlk.changePct - marketIndicators.spy.changePct) >= 0 ? X.green : X.red, fontFamily: "'JetBrains Mono', monospace" } }, `${(marketIndicators.xlk.changePct - marketIndicators.spy.changePct) >= 0 ? "+" : ""}${(marketIndicators.xlk.changePct - marketIndicators.spy.changePct).toFixed(1)}%`)
             ),
             macro?.fedFundsRate && React.createElement("div", { style: { background: "#111827", borderRadius: 10, border: "1px solid #1e293b", padding: "8px 10px", textAlign: "center" } },
-              React.createElement("div", { style: { fontSize: 8, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Fed Rate"),
+              React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, "Fed Rate"),
               React.createElement("div", { style: { fontSize: 14, fontWeight: 700, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace" } }, `${macro.fedFundsRate.current}%`)
             )
           ),
@@ -2834,8 +2880,8 @@ Antworte NUR mit validem JSON:
             return React.createElement("div", { key: s.ticker, style: { background: "#111827", borderRadius: 12, border: `1px solid ${col}22`, padding: 13, marginBottom: 7 } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 } },
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-                  React.createElement("span", { className: "m", style: { fontSize: 11, fontWeight: 700, color: X.purple } }, s.ticker),
-                  React.createElement("span", { style: { fontSize: 9, padding: "2px 8px", borderRadius: 10, background: `${col}18`, border: `1px solid ${col}44`, color: col, fontWeight: 700 } }, sigLabel[s.signal] || s.signal)
+                  React.createElement("span", { style: { fontSize: 10, padding: "3px 10px", borderRadius: 10, background: `${col}22`, border: `1px solid ${col}55`, color: col, fontWeight: 700, letterSpacing: ".04em" } }, sigLabel[s.signal] || s.signal),
+                  React.createElement("span", { className: "m", style: { fontSize: 12, fontWeight: 700, color: X.purple } }, s.ticker)
                 ),
                 React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: actCol[s.action] || X.yellow } }, `${actIcon[s.action] || "▶"} ${s.action}`)
               ),
@@ -2932,9 +2978,9 @@ Antworte NUR mit validem JSON:
           )
 
         ) : React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 28, textAlign: "center" } },
-          React.createElement("div", { style: { fontSize: 28, marginBottom: 10 } }, "⚡"),
-          React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 5 } }, "Starte die Live-Recherche"),
-          React.createElement("div", { style: { fontSize: 12, color: "#64748b" } }, "Claude analysiert aktuelle Kurse und bewertet Timing-Chancen für jede Position.")
+          React.createElement("div", { style: { fontSize: 28, marginBottom: 10 } }, "◉"),
+          React.createElement("div", { style: { fontSize: 15, fontWeight: 600, marginBottom: 5 } }, "Timing-Analyse starten"),
+          React.createElement("div", { style: { fontSize: 13, color: "#64748b", lineHeight: 1.6 } }, "Claude analysiert aktuelle Kurse und bewertet Timing-Chancen für jede Position.")
         )
       ),
 
@@ -2944,17 +2990,23 @@ Antworte NUR mit validem JSON:
           React.createElement("div", { style: { fontSize: 13, fontWeight: 600, marginBottom: 10 } }, "DCA-Plan erstellen"),
           React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 } },
             React.createElement("div", null,
-              React.createElement("label", { style: { fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 } }, "Ziel-Allokation (€)"),
-              React.createElement("input", { value: dcaBudget, onChange: e => setDcaBudget(e.target.value), type: "number", placeholder: "z.B. 12000", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: "100%" } })
+              React.createElement("label", { style: { fontSize: 11, color: "#64748b", display: "block", marginBottom: 3 } }, "Ziel-Allokation"),
+              React.createElement("div", { style: { position: "relative" } },
+                React.createElement("span", { style: { position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: "#64748b", fontFamily: "'JetBrains Mono', monospace", pointerEvents: "none" } }, "€"),
+                React.createElement("input", { value: dcaBudget, onChange: e => setDcaBudget(e.target.value), type: "number", placeholder: "z.B. 12000", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px 8px 26px", fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: "100%" } })
+              )
             ),
             React.createElement("div", null,
-              React.createElement("label", { style: { fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 } }, "Zeitraum (Monate)"),
+              React.createElement("label", { style: { fontSize: 11, color: "#64748b", display: "block", marginBottom: 3 } }, "Zeitraum (Monate)"),
               React.createElement("input", { value: dcaMonths, onChange: e => setDcaMonths(e.target.value), type: "number", placeholder: "12", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: "100%" } })
             )
           ),
           React.createElement("div", { style: { marginBottom: 10 } },
-            React.createElement("label", { style: { fontSize: 10, color: "#64748b", display: "block", marginBottom: 3 } }, "Sonder-Vermögen (€, optional — wird im Timing-Tab genutzt)"),
-            React.createElement("input", { value: dcaExtra, onChange: e => setDcaExtra(e.target.value), type: "number", placeholder: "Einmalig für attraktive Gelegenheiten", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: "100%" } })
+            React.createElement("label", { style: { fontSize: 11, color: "#64748b", display: "block", marginBottom: 3 } }, "Sonder-Vermögen (optional — wird im Timing-Tab genutzt)"),
+            React.createElement("div", { style: { position: "relative" } },
+              React.createElement("span", { style: { position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", fontSize: 13, color: "#64748b", fontFamily: "'JetBrains Mono', monospace", pointerEvents: "none" } }, "€"),
+              React.createElement("input", { value: dcaExtra, onChange: e => setDcaExtra(e.target.value), type: "number", placeholder: "Einmalig für attraktive Gelegenheiten", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px 8px 26px", fontSize: 13, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: "100%" } })
+            )
           ),
           dcaBudget && dcaMonths && (() => { const invested = stocks.reduce((s, st) => s + st.cost, 0); const remaining = Math.max(0, parseFloat(dcaBudget) - invested); const monthly = (remaining / parseInt(dcaMonths)).toFixed(2); return React.createElement("div", { className: "m", style: { fontSize: 11, color: "#64748b", marginBottom: 10 } }, `Bereits investiert: €${invested.toLocaleString("de-DE", { minimumFractionDigits: 2 })} · Verbleibend: €${remaining.toLocaleString("de-DE", { minimumFractionDigits: 2 })} → €${monthly}/Monat${dcaExtra ? ` + €${parseFloat(dcaExtra).toFixed(2)} Sonder-Budget` : ""}`); })(),
           React.createElement("button", { onClick: async () => {
@@ -3096,14 +3148,16 @@ Antworte NUR mit validem JSON:
           )
         ),
 
-        !dcaPlan && !busyDca && stocks.length > 0 && React.createElement("div", { style: { textAlign: "center", padding: 30, color: "#475569" } },
-          React.createElement("div", { style: { fontSize: 28, marginBottom: 8 } }, "📊"),
-          React.createElement("div", { style: { fontSize: 14, fontWeight: 600, marginBottom: 5 } }, "DCA-Plan erstellen"),
-          React.createElement("div", { style: { fontSize: 12, color: "#64748b" } }, "Budget und Zeitraum eintragen, dann analysiert Claude die optimale monatliche Verteilung.")
+        !dcaPlan && !busyDca && stocks.length > 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 28, textAlign: "center" } },
+          React.createElement("div", { style: { fontSize: 28, marginBottom: 10 } }, "◉"),
+          React.createElement("div", { style: { fontSize: 15, fontWeight: 600, marginBottom: 5 } }, "DCA-Plan erstellen"),
+          React.createElement("div", { style: { fontSize: 13, color: "#64748b", lineHeight: 1.6 } }, "Budget und Zeitraum eintragen, dann analysiert Claude die optimale monatliche Verteilung.")
         ),
 
-        stocks.length === 0 && React.createElement("div", { style: { textAlign: "center", padding: 30, color: "#475569" } },
-          React.createElement("div", { style: { fontSize: 14, fontWeight: 600 } }, "Füge zuerst Aktien zum Portfolio hinzu")
+        stocks.length === 0 && React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: "1px solid #1e293b", padding: 28, textAlign: "center" } },
+          React.createElement("div", { style: { fontSize: 28, marginBottom: 10 } }, "◉"),
+          React.createElement("div", { style: { fontSize: 15, fontWeight: 600, marginBottom: 5 } }, "Keine Positionen"),
+          React.createElement("div", { style: { fontSize: 13, color: "#64748b", lineHeight: 1.6 } }, "Füge zuerst Aktien zum Portfolio hinzu.")
         )
       ),
 
@@ -3114,7 +3168,7 @@ Antworte NUR mit validem JSON:
           React.createElement("div", { key: i, onClick: () => a.detail && setExAlert(exAlert === i ? null : i), style: {
             background: "#111827", borderRadius: 12, padding: "11px 13px", marginBottom: 7,
             border: `1px solid ${a.status === "green" ? "#1e293b" : (X[a.status] || X.yellow) + "33"}`,
-            cursor: a.detail ? "pointer" : "default", opacity: alertsLive ? 1 : 0.4,
+            cursor: "pointer", opacity: alertsLive ? 1 : 0.4,
           } },
             React.createElement("div", { style: { display: "flex", alignItems: "center" } },
               React.createElement("span", { style: { display: "inline-block", width: 10, height: 10, borderRadius: "50%", background: X[a.status] || "#475569", boxShadow: `0 0 8px ${(X[a.status] || "#475569")}55`, marginRight: 8 } }),
@@ -3219,8 +3273,9 @@ Antworte NUR mit validem JSON:
       ),
 
       /* Footer */
-      React.createElement("div", { style: { marginTop: 16, padding: "10px 12px", background: "#111827", borderRadius: 10, border: "1px solid #1e293b", fontSize: 10, color: "#475569" } },
-        React.createElement("b", { style: { color: "#64748b" } }, "Hinweis:"), " Live via Claude AI mit Web Search. Keine Finanzberatung."
+      React.createElement("div", { style: { marginTop: 16, padding: "10px 12px", background: "#111827", borderRadius: 10, border: "1px solid #1e293b", fontSize: 10, color: "#475569", display: "flex", justifyContent: "space-between", alignItems: "center" } },
+        React.createElement("span", null, React.createElement("b", { style: { color: "#64748b" } }, "Hinweis:"), " Live via Claude AI mit Web Search. Keine Finanzberatung."),
+        React.createElement("span", { className: "m", style: { color: "#334155", flexShrink: 0, marginLeft: 8 } }, `v${BUILD_TIMESTAMP.split(",")[0]}`)
       )
     )
   );

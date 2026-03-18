@@ -21,9 +21,15 @@
     @keyframes earningsPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.85;transform:scale(1.02)} }
     input, select, button { font-family: inherit; }
     input:focus, select:focus { outline: 1px solid #6366f1; }
-    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: #111827; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+    ::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+    .tab-strip::-webkit-scrollbar { display: none; }
+    .tab-strip { -ms-overflow-style: none; scrollbar-width: none; }
+    button:not(:disabled) { transition: opacity 0.15s, filter 0.15s, transform 0.1s; }
+    button:not(:disabled):hover { filter: brightness(1.15); }
+    button:not(:disabled):active { transform: scale(0.97); }
   </style>
 </head>
 <body>
