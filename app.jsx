@@ -1,16 +1,23 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "19.03.2026, 23:46 Uhr";
+const BUILD_TIMESTAMP = "20.03.2026, 00:50 Uhr";
 
 /* ═══ HELPERS ═══ */
+let _abortCtrl = null;
 function delay(ms) {
-  if (ms < 2000) return new Promise(r => setTimeout(r, ms));
+  if (_abortCtrl?.signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
+  if (ms < 2000) {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(resolve, ms);
+      _abortCtrl?.signal?.addEventListener("abort", () => { clearTimeout(t); reject(new DOMException("Aborted", "AbortError")); }, { once: true });
+    });
+  }
   const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const secs = Math.ceil(ms / 1000);
   debugPush({ ts, label: `⏳ Warte ${secs}s (Rate-Limit)…`, status: "pending", tokens: 0, _countdown: true });
   const idx = _debugLog.length - 1;
-  return new Promise(r => {
+  return new Promise((resolve, reject) => {
     let remaining = secs;
     const tick = setInterval(() => {
       remaining--;
@@ -18,12 +25,18 @@ function delay(ms) {
         clearInterval(tick);
         _debugLog.splice(idx, 1);
         _debugListeners.forEach(fn => fn([..._debugLog]));
-        r();
+        resolve();
       } else {
         _debugLog[idx] = { ..._debugLog[idx], label: `⏳ Warte ${remaining}s (Rate-Limit)…` };
         _debugListeners.forEach(fn => fn([..._debugLog]));
       }
     }, 1000);
+    _abortCtrl?.signal?.addEventListener("abort", () => {
+      clearInterval(tick);
+      _debugLog.splice(idx, 1);
+      _debugListeners.forEach(fn => fn([..._debugLog]));
+      reject(new DOMException("Aborted", "AbortError"));
+    }, { once: true });
   });
 }
 const API_DELAY = 15000;
@@ -94,7 +107,7 @@ const FRED_SERIES = {
 
 async function fetchFredSeries(seriesId, fredKey, limit = 2) {
   const url = `${fredProxyUrl()}?series_id=${seriesId}&api_key=${fredKey}&file_type=json&sort_order=desc&limit=${limit}`;
-  const r = await fetch(url);
+  const r = await fetch(url, { signal: _abortCtrl?.signal });
   if (!r.ok) throw new Error(`FRED ${seriesId}: ${r.status}`);
   const data = await r.json();
   return (data.observations || []).map(o => ({ date: o.date, value: o.value !== "." ? parseFloat(o.value) : null })).filter(o => o.value !== null);
@@ -165,7 +178,7 @@ async function fetchMarketIndicators() {
     const failed = [];
     for (const [key, symbol] of Object.entries(MARKET_TICKERS)) {
       try {
-        const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${token}`);
+        const r = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${token}`, { signal: _abortCtrl?.signal });
         const q = await r.json();
         if (q && q.c && q.c > 0) {
           results[key] = { price: q.c, change: q.d, changePct: q.dp, prevClose: q.pc };
@@ -200,11 +213,12 @@ async function fetchStockData(tickers) {
     debugPush({ ts, label: `${ticker} (quote + metrics)`, status: "pending", fmp: true, tokens: 0 });
     const dbIdx = _debugLog.length - 1;
     try {
+      const sig = _abortCtrl?.signal;
       const [quoteRes, metricsRes, recoRes, earningsRes] = await Promise.all([
-        fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${token}`),
-        fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${ticker}&metric=all&token=${token}`),
-        fetch(`https://finnhub.io/api/v1/stock/recommendation?symbol=${ticker}&token=${token}`),
-        fetch(`https://finnhub.io/api/v1/stock/earnings?symbol=${ticker}&token=${token}`),
+        fetch(`https://finnhub.io/api/v1/quote?symbol=${ticker}&token=${token}`, { signal: sig }),
+        fetch(`https://finnhub.io/api/v1/stock/metric?symbol=${ticker}&metric=all&token=${token}`, { signal: sig }),
+        fetch(`https://finnhub.io/api/v1/stock/recommendation?symbol=${ticker}&token=${token}`, { signal: sig }),
+        fetch(`https://finnhub.io/api/v1/stock/earnings?symbol=${ticker}&token=${token}`, { signal: sig }),
       ]);
       const q = await quoteRes.json();
       const metricsData = await metricsRes.json();
@@ -285,21 +299,34 @@ async function fetchStockData(tickers) {
 }
 
 async function verify52WeekHighs(stockData) {
-  const tickers = Object.keys(stockData);
-  if (tickers.length === 0) return stockData;
-  const tickerList = tickers.map(t => `${t}: Finnhub=$${stockData[t].yearHigh ?? "n/a"}`).join(", ");
+  // Nur Ticker mit unplausiblen 52wH-Werten verifizieren:
+  // - yearHigh == null/undefined
+  // - yearHigh <= aktueller Kurs (sollte immer >= sein)
+  // - yearHigh == aktueller Kurs (verdächtig identisch)
+  const suspect = Object.entries(stockData).filter(([, d]) => {
+    if (d.yearHigh == null || d.price == null) return true;
+    if (d.yearHigh <= d.price) return true;
+    return false;
+  });
+  if (suspect.length === 0) {
+    const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    debugPush({ ts, label: `52wH plausibel: alle ${Object.keys(stockData).length} Ticker ok — kein Web-Check nötig`, status: "ok", search: false, tokens: 0 });
+    return stockData;
+  }
+  const suspectTickers = suspect.map(([t]) => t);
+  const tickerList = suspect.map(([t, d]) => `${t}: Kurs=$${d.price}, Finnhub52wH=$${d.yearHigh ?? "n/a"}`).join(", ");
   const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  debugPush({ ts, label: `52wH Verifizierung: ${tickers.length} Ticker`, status: "pending", search: true, tokens: 500 });
+  debugPush({ ts, label: `52wH Verifizierung: ${suspectTickers.length} verdächtig (${suspectTickers.join(", ")})`, status: "pending", search: true, tokens: 500 });
   const dbIdx = _debugLog.length - 1;
   try {
     const raw = await callAPI(
-      `Look up the current 52-week high price (in USD) for each of these stocks: ${tickers.join(", ")}.
+      `Look up the current 52-week high price (in USD) for each of these stocks: ${suspectTickers.join(", ")}.
 
-Current Finnhub values for reference (may be stale/incorrect): ${tickerList}
+These stocks have suspicious Finnhub values (52-week high equals or is below current price): ${tickerList}
 
 Respond ONLY with raw JSON, no backticks:
 {"highs":{"TICKER":123.45}}
-Include ALL tickers. Use the actual 52-week high from current market data.`,
+Include ALL listed tickers. Use the actual 52-week high from current market data.`,
       "Financial data analyst. Use web_search to find accurate 52-week high prices. Respond with ONLY raw JSON.",
       true,
       500
@@ -323,7 +350,7 @@ Include ALL tickers. Use the actual 52-week high from current market data.`,
       }
       _debugLog[dbIdx] = { ..._debugLog[dbIdx], status: "ok", code: 200, label: corrections.length > 0
         ? `52wH korrigiert: ${corrections.join(", ")}`
-        : `52wH verifiziert: alle ${tickers.length} Werte korrekt` };
+        : `52wH verifiziert: ${suspectTickers.length} Ticker geprüft, keine Korrektur nötig` };
       _debugListeners.forEach(fn => fn([..._debugLog]));
       return updated;
     }
@@ -347,7 +374,7 @@ async function fetchInsiderData(tickers) {
     debugPush({ ts, label: `${ticker} Insider`, status: "pending", fmp: true, tokens: 0 });
     const dbIdx = _debugLog.length - 1;
     try {
-      const r = await fetch(`https://finnhub.io/api/v1/stock/insider-transactions?symbol=${ticker}&token=${token}`);
+      const r = await fetch(`https://finnhub.io/api/v1/stock/insider-transactions?symbol=${ticker}&token=${token}`, { signal: _abortCtrl?.signal });
       const data = await r.json();
       const txns = (data?.data || []).filter(t => t.transactionDate >= cutoff);
       const sells = txns.filter(t => t.change < 0);
@@ -388,7 +415,7 @@ async function fetchEarningsCalendar(token, portfolioTickers) {
   try {
     const results = await Promise.all(allTickers.map(async (sym) => {
       try {
-        const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?symbol=${sym}&from=${from}&to=${to}&token=${token}`);
+        const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?symbol=${sym}&from=${from}&to=${to}&token=${token}`, { signal: _abortCtrl?.signal });
         const data = await r.json();
         return (data?.earningsCalendar || []).map(e => ({ ...e, _sym: sym }));
       } catch { return []; }
@@ -503,6 +530,7 @@ async function callAPI(user, sys, useSearch, maxTokens) {
         "anthropic-dangerous-direct-browser-access": "true",
       },
       body: JSON.stringify(body),
+      signal: _abortCtrl?.signal,
     });
     const rl = { limit: r.headers.get("anthropic-ratelimit-requests-limit"), remaining: r.headers.get("anthropic-ratelimit-requests-remaining"), reset: r.headers.get("anthropic-ratelimit-requests-reset"), retryAfter: r.headers.get("retry-after") };
     console.log("[Rate-Limit]", rl, "Status:", r.status);
@@ -528,6 +556,11 @@ async function callAPI(user, sys, useSearch, maxTokens) {
       _debugListeners.forEach(fn => fn([..._debugLog]));
       return (d.content || []).filter(b => b.type === "text").map(b => b.text).join("\n").trim();
     } catch (e) {
+      if (e.name === "AbortError") {
+        _debugLog[idx] = { ..._debugLog[idx], status: "error", code: 0, detail: "Abgebrochen" };
+        _debugListeners.forEach(fn => fn([..._debugLog]));
+        throw e;
+      }
       // Bei 429-artigem Netzwerkfehler (CORS blockiert Response): retry
       if (attempt === 0 && e.message && e.message.includes("429")) {
         _debugLog[idx] = { ..._debugLog[idx], status: "pending", detail: `429 — warte 60s (retry)…` };
@@ -595,12 +628,6 @@ async function doAnalyze(allData, stockList, fmpData, insiderDataMap, macroData,
   if (allData.tsmc) compact.tsmc = { sentiment: allData.tsmc.sentiment, summary: (allData.tsmc.summary || "").slice(0, 150) };
   if (allData.dram) compact.dram = { sentiment: allData.dram.sentiment, summary: (allData.dram.summary || "").slice(0, 150) };
   if (allData.nvidia) compact.nvidia = { sentiment: allData.nvidia.sentiment, summary: (allData.nvidia.summary || "").slice(0, 150) };
-  if (allData.positions) {
-    compact.positions = {};
-    for (const [k, v] of Object.entries(allData.positions)) {
-      compact.positions[k] = { sentiment: v.sentiment, summary: (v.summary || "").slice(0, 100) };
-    }
-  }
   if (allData.insider) compact.insider = { sentiment: allData.insider.sentiment, summary: (allData.insider.summary || "").slice(0, 150) };
 
   let fmpBlock = "";
@@ -702,7 +729,7 @@ Nutze die Makro-Daten für Zinsumfeld-Alert: grün=stabile/fallende Zinsen, gelb
   return { overallStatus: "yellow", explanation: "Analyse konnte nicht strukturiert werden.", capexTrend: "stable", alerts: [{ name: "Parsing", status: "yellow", detail: "JSON-Parsing fehlgeschlagen. Bitte erneut versuchen." }], risks: ["Automatische Analyse fehlgeschlagen"], action: "Einzelergebnisse prüfen", nextEvent: "—" };
 }
 
-async function doTimingAnalysis(priceData, stockList, fmpData, insiderDataMap, macroData, marketData, extraBudget, dcaMonths, eurUsdRate, capexImpactData) {
+async function doTimingAnalysis(stockList, fmpData, insiderDataMap, macroData, marketData, extraBudget, dcaMonths, eurUsdRate, capexImpactData) {
   const totalInvested = stockList.reduce((sum, s) => sum + s.cost, 0);
   const stockInfo = stockList.map(s => {
     const pctOfPortfolio = totalInvested > 0 ? (s.cost / totalInvested * 100).toFixed(1) : "0";
@@ -773,7 +800,7 @@ Gleichgewichtung wäre ${(100 / stockList.length).toFixed(1)}% pro Position.
 
 Aktien: ${stockInfo}
 
-Aktuelle Kursdaten: ${JSON.stringify(priceData)}${fmpBlock}${insiderBlock}${macroTimingBlock}${capexImpactBlock}
+Marktdaten & Kontext:${fmpBlock}${insiderBlock}${macroTimingBlock}${capexImpactBlock}
 
 Für JEDE Aktie: Bewerte ob der aktuelle Kurs eine Nachkaufgelegenheit, Halteposition, oder Gewinnmitnahme-Kandidat ist.
 ${extraBudget > 0 ? `\nSONDER-VERMÖGEN: €${extraBudget.toFixed(2)} verfügbar für DCA-unabhängige Nachkäufe über ${dcaMonths || 12} Monate.\nEmpfehle konkrete Nachkäufe NUR wenn aktuell wirklich attraktive Gelegenheiten bestehen. Das Budget muss NICHT sofort ausgegeben werden — es kann über den gesamten Zeitraum verteilt werden, zu Beginn, am Ende, oder alles auf einmal, je nach Marktlage. Leeres Array [] wenn aktuell nichts attraktiv genug ist.` : ""}
@@ -1598,7 +1625,6 @@ function App() {
   const [sellPrioLastRun, setSellPrioLastRun] = useState(null);
   const [busySellPrio, setBusySellPrio] = useState(false);
   const [busyTiming, setBusyTiming] = useState(false);
-  const cancelRef = useRef(false);
   const [timingStep, setTimingStep] = useState("");
   const [dataLoaded, setDataLoaded] = useState(false);
   const [macro, setMacro] = useState(null);
@@ -1821,23 +1847,23 @@ function App() {
 
   /* ═══ RESEARCH ═══ */
   const cancelResearch = useCallback(() => {
-    cancelRef.current = true;
+    _abortCtrl?.abort();
   }, []);
 
   const run = useCallback(async () => {
-    cancelRef.current = false;
+    _abortCtrl = new AbortController();
     setBusy(true); setPct(0); debugClear();
     setCapex([]); setTsmc(null); setDram(null); setNvidia(null);
     setPositions({}); setInsider(null); setAnalysis(null); setTiming(null); setLogs([]);
     setMacro(null); setMarketIndicators(null);
     addLog("Recherche gestartet…");
 
-    let lCapex = [], lTsmc = null, lDram = null, lNvidia = null, lPos = {}, lInsider = null;
+    let lCapex = [], lTsmc = null, lDram = null, lNvidia = null, lInsider = null;
     let lMacro = null, lMarket = null;
     let fmpData = {};
     let lInsiderData = {};
     const check = () => {
-      if (cancelRef.current) {
+      if (_abortCtrl?.signal?.aborted) {
         addLog("⛔ Abgebrochen.");
         setBusy(false);
         debugSaveToServer(stocks, fmpData, eurUsdRate);
@@ -1848,10 +1874,10 @@ function App() {
     let step = 0;
 
     try {
-      // Total: 1 Finnhub + 1 Macro + 2 capex + 2 indicators + N positions + 1 analysis + 1 timing + 2 earnings-deep
+      // Total: 1 Finnhub + 1 Macro + 2 capex + 2 indicators + 1 timing + 1 analysis + 2 earnings-deep
       const hasFmp = !!getFmpKey();
       const hasFred = !!getFredKey();
-      const total = (hasFmp ? 1 : 0) + (hasFred || hasFmp ? 1 : 0) + 2 + 2 + stocks.length + 1 + 1 + 2;
+      const total = (hasFmp ? 1 : 0) + (hasFred || hasFmp ? 1 : 0) + 2 + 2 + 1 + 1 + 2;
       setTotalSteps(total);
 
       const advance = (label) => { step++; setStepNum(step); setStepName(label); setPct(Math.round((step / total) * 100)); };
@@ -1942,22 +1968,6 @@ function App() {
       setNvidia(lNvidia);
       addLog("  ✓ NVIDIA: " + lNvidia.sentiment);
 
-      // Phase 3: Positions + Price — 1 call per stock
-      for (let i = 0; i < stocks.length; i++) {
-        if (check()) return;
-        await delay(API_DELAY);
-        const s = stocks[i];
-        advance(s.name);
-        addLog("→ " + s.name);
-        const query = s.type === "capex"
-          ? `${s.name} ${s.ticker} stock earnings news price 52-week high low 2026 ${s.sector}`
-          : `${s.name} ${s.ticker} stock earnings outlook price performance 2026 ${s.sector}`;
-        const result = await doSearch(query);
-        lPos = { ...lPos, [s.ticker]: result };
-        setPositions({ ...lPos });
-        addLog("  ✓ " + s.name + ": " + result.sentiment);
-      }
-
       // Insider-Daten als Zusammenfassung bereitstellen
       lInsider = hasFmp && Object.keys(lInsiderData).length > 0
         ? { sentiment: Object.values(lInsiderData).some(d => d.totalSells > 3) ? "bearish" : Object.values(lInsiderData).every(d => d.totalSells === 0) ? "bullish" : "neutral",
@@ -2023,11 +2033,7 @@ Antworte NUR mit validem JSON:
       await delay(API_DELAY);
       advance("Timing-Bewertung");
       addLog("→ Timing-Bewertung…");
-      const priceData = {};
-      for (const [ticker, data] of Object.entries(lPos)) {
-        priceData[ticker] = { sentiment: data.sentiment, summary: (data.summary || "").slice(0, 200) };
-      }
-      const tim = await doTimingAnalysis(priceData, stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, lCapexImpact);
+      const tim = await doTimingAnalysis(stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, lCapexImpact);
       setTiming(tim);
       addLog("✓ Timing: Score " + (tim?.opportunityScore || "?") + "/10");
 
@@ -2036,7 +2042,7 @@ Antworte NUR mit validem JSON:
       await delay(API_DELAY);
       advance("Gesamtanalyse");
       addLog("→ Gesamtanalyse…");
-      const allData = { capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider };
+      const allData = { capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, insider: lInsider };
       const ana = await doAnalyze(allData, stocks, fmpData, lInsiderData, lMacro, lMarket, lCapexImpact, tim);
       setAnalysis(ana);
       addLog("✓ Status: " + (ana?.overallStatus || "?"));
@@ -2046,14 +2052,20 @@ Antworte NUR mit validem JSON:
       debugSaveToServer(stocks, fmpData, eurUsdRate);
 
       setLogs(prevLogs => {
-        saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, positions: lPos, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, lastRun: now.toISOString(), logs: prevLogs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact: lCapexImpact });
+        saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, lastRun: now.toISOString(), logs: prevLogs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact: lCapexImpact });
         return prevLogs;
       });
     } catch (e) {
-      console.error("Komplettanalyse Fehler:", e);
-      const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      debugPush({ ts, label: `⛔ Analyse abgebrochen: ${e.message}`, status: "error", tokens: 0, code: 0 });
-      addLog(`⛔ Fehler: ${e.message}`);
+      if (e.name === "AbortError") {
+        const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        debugPush({ ts, label: "⛔ Analyse abgebrochen (manuell)", status: "error", tokens: 0, code: 0 });
+        addLog("⛔ Abgebrochen.");
+      } else {
+        console.error("Komplettanalyse Fehler:", e);
+        const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        debugPush({ ts, label: `⛔ Analyse abgebrochen: ${e.message}`, status: "error", tokens: 0, code: 0 });
+        addLog(`⛔ Fehler: ${e.message}`);
+      }
       setBusy(false);
       debugSaveToServer(stocks, fmpData, eurUsdRate);
     }
@@ -2061,7 +2073,7 @@ Antworte NUR mit validem JSON:
 
   /* ═══ INDEPENDENT TIMING ═══ */
   const runTiming = useCallback(async () => {
-    cancelRef.current = false;
+    _abortCtrl = new AbortController();
     setBusyTiming(true); debugClear();
     setLogs([]);
     addLog("Timing-Analyse gestartet…");
@@ -2069,7 +2081,7 @@ Antworte NUR mit validem JSON:
 
     let fmpData = {};
     const check = () => {
-      if (cancelRef.current) {
+      if (_abortCtrl?.signal?.aborted) {
         addLog("⛔ Timing abgebrochen.");
         setBusyTiming(false);
         setTimingStep("");
@@ -2107,26 +2119,12 @@ Antworte NUR mit validem JSON:
         setInsiderData(lInsiderData);
         if (lMacro) setMacro(lMacro);
         if (lMarket) setMarketIndicators(lMarket);
-        // Längere Pause nach 52wH-Verifikation (web_search Rate-Limit)
-        setTimingStep("Warte auf API Rate-Limit…");
-        await delay(60000);
       }
 
-      const priceResults = {};
-      for (let i = 0; i < stocks.length; i++) {
-        if (check()) return;
-        const s = stocks[i];
-        setTimingStep(`${s.ticker} Kurs… (${i + 1}/${stocks.length})`);
-        addLog(`Kurs ${s.ticker} (${i + 1}/${stocks.length})…`);
-        await delay(API_DELAY);
-        const pr = await doSearch(`${s.ticker} ${s.name} stock price 52-week high low 2026`);
-        priceResults[s.ticker] = { sentiment: pr.sentiment, summary: (pr.summary || "").slice(0, 200) };
-      }
       if (check()) return;
-      await delay(API_DELAY);
       setTimingStep("Timing-Bewertung…");
       addLog("Timing-Bewertung läuft…");
-      const tim = await doTimingAnalysis(priceResults, stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, capexImpact);
+      const tim = await doTimingAnalysis(stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, capexImpact);
       if (check()) return;
       setTiming(tim);
       addLog("✅ Timing-Analyse abgeschlossen");
@@ -2139,10 +2137,16 @@ Antworte NUR mit validem JSON:
         saveData(merged);
       } catch (ignored) {}
     } catch (e) {
-      console.error("Timing-Analyse Fehler:", e);
-      const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      debugPush({ ts, label: `⛔ Timing abgebrochen: ${e.message}`, status: "error", tokens: 0, code: 0 });
-      addLog(`⛔ Fehler: ${e.message}`);
+      if (e.name === "AbortError") {
+        const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        debugPush({ ts, label: "⛔ Timing abgebrochen (manuell)", status: "error", tokens: 0, code: 0 });
+        addLog("⛔ Abgebrochen.");
+      } else {
+        console.error("Timing-Analyse Fehler:", e);
+        const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        debugPush({ ts, label: `⛔ Timing abgebrochen: ${e.message}`, status: "error", tokens: 0, code: 0 });
+        addLog(`⛔ Fehler: ${e.message}`);
+      }
       setBusyTiming(false);
       setTimingStep("");
       debugSaveToServer(stocks, fmpData, eurUsdRate, "timing");
@@ -2884,7 +2888,7 @@ Antworte NUR mit validem JSON:
       /* ═══ TIMING ═══ */
       tab === "timing" && React.createElement(React.Fragment, null,
         React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, "Kurs-Timing: Nachkaufen bei Korrekturen, Gewinne mitnehmen bei Überhitzung."),
-        React.createElement("button", { onClick: () => { if (busyTiming) { cancelRef.current = true; return; } if (checkKeys()) runTiming(); }, disabled: busy, style: {
+        React.createElement("button", { onClick: () => { if (busyTiming) { _abortCtrl?.abort(); return; } if (checkKeys()) runTiming(); }, disabled: busy, style: {
           width: "100%", padding: 10, marginBottom: 12, borderRadius: 10, border: "none",
           cursor: busy ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit",
           background: busy ? "#1e293b" : busyTiming ? `linear-gradient(135deg,#dc2626,#991b1b)` : `linear-gradient(135deg,${X.cyan}cc,${X.indigo})`,
