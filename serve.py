@@ -68,7 +68,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
                 return
             ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-            filepath = os.path.join(LOG_DIR, f"debug_{ts}.json")
+            log_type = data.get("type", "debug")
+            safe_type = "".join(c for c in log_type if c.isalnum() or c in "-_")[:20] or "debug"
+            filepath = os.path.join(LOG_DIR, f"{safe_type}_{ts}.json")
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             print(f"[LOG] {filepath}")
