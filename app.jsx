@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "20.03.2026, 00:50 Uhr";
+const BUILD_TIMESTAMP = "20.03.2026, 01:52 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -620,7 +620,7 @@ async function doMultiSearch(query, keys) {
   return Object.fromEntries(keys.map(k => [k, { summary: "Parsing fehlgeschlagen", sentiment: "neutral", keyPoints: [], confidence: 0.2 }]));
 }
 
-async function doAnalyze(allData, stockList, fmpData, insiderDataMap, macroData, marketData, capexImpactData, timingData) {
+async function doAnalyze(allData, stockList, fmpData, insiderDataMap, macroData, marketData, capexImpactData, timingData, geopolitikData) {
   const capexTickers = stockList.filter(s => s.type === "capex").map(s => s.ticker).join(", ");
   const otherInfo = stockList.filter(s => s.type === "other").map(s => `${s.ticker} (${s.sector})`).join(", ");
   const compact = {};
@@ -702,17 +702,25 @@ async function doAnalyze(allData, stockList, fmpData, insiderDataMap, macroData,
     if (timingData.dcaAdvice) timingBlock += `\nDCA-Empfehlung: ${timingData.dcaAdvice}`;
   }
 
+  let geoBlock = "";
+  if (geopolitikData?.events?.length > 0) {
+    const gLines = geopolitikData.events.map(e => `• ${e.title} (${e.impact}, ${e.severity}): ${e.description} [${e.affectedTickers?.join(", ") || "—"}]`);
+    geoBlock = `\n\nGeopolitische Risiken & Chancen (Risiko-Level: ${geopolitikData.riskLevel}):\n${gLines.join("\n")}`;
+    if (geopolitikData.outlook) geoBlock += `\nAusblick: ${geopolitikData.outlook}`;
+  }
+
   const raw = await callAPI(
     `Portfolio: CapEx-Aktien: ${capexTickers}${otherInfo ? ". Andere: " + otherInfo : ""}
-Daten: ${JSON.stringify(compact)}${fmpBlock}${insiderBlock}${concBlock}${macroBlock}${marketBlock}${capexImpactBlock}${timingBlock}
+Daten: ${JSON.stringify(compact)}${fmpBlock}${insiderBlock}${concBlock}${macroBlock}${marketBlock}${capexImpactBlock}${timingBlock}${geoBlock}
 
 Antworte NUR mit validem JSON. Kein Markdown, keine Backticks, kein Text davor oder danach:
-{"overallStatus":"green","explanation":"1-2 Sätze deutsch","capexTrend":"accelerating","alerts":[{"name":"CapEx-Wende","status":"green","detail":"deutsch"},{"name":"TSMC-Trend","status":"green","detail":"deutsch"},{"name":"DRAM-Preise","status":"green","detail":"deutsch"},{"name":"Bewertungsrisiko","status":"yellow","detail":"deutsch"},{"name":"Insider-Aktivität","status":"green","detail":"deutsch"},{"name":"NVIDIA-Guidance","status":"green","detail":"deutsch"},{"name":"Zinsumfeld","status":"green","detail":"deutsch"},{"name":"Marktbreite","status":"green","detail":"deutsch"}],"risks":["deutsch1","deutsch2","deutsch3"],"action":"deutsch","nextEvent":"deutsch"}
+{"overallStatus":"green","explanation":"1-2 Sätze deutsch","capexTrend":"accelerating","alerts":[{"name":"CapEx-Wende","status":"green","detail":"deutsch"},{"name":"TSMC-Trend","status":"green","detail":"deutsch"},{"name":"DRAM-Preise","status":"green","detail":"deutsch"},{"name":"Bewertungsrisiko","status":"yellow","detail":"deutsch"},{"name":"Insider-Aktivität","status":"green","detail":"deutsch"},{"name":"NVIDIA-Guidance","status":"green","detail":"deutsch"},{"name":"Zinsumfeld","status":"green","detail":"deutsch"},{"name":"Marktbreite","status":"green","detail":"deutsch"},{"name":"Geopolitik","status":"green","detail":"deutsch"}],"risks":["deutsch1","deutsch2","deutsch3"],"action":"deutsch","nextEvent":"deutsch"}
 
 overallStatus: green=klar, yellow=1-2 Warnungen, orange=3+, red=bestätigte Kürzungen.
-capexTrend: accelerating/stable/decelerating/contracting. Immer 8 alerts. Alles deutsch.
+capexTrend: accelerating/stable/decelerating/contracting. Immer 9 alerts. Alles deutsch.
 Nutze die Fundamentaldaten für Bewertungsrisiko (P/E, PEG vs. Portfolio-Durchschnitt). Nutze Insider-Daten für Insider-Alert. Berücksichtige Klumpenrisiko bei der Risikoeinschätzung.
-Nutze die Makro-Daten für Zinsumfeld-Alert: grün=stabile/fallende Zinsen, gelb=hawkish Signale, rot=aktives Tightening. Nutze VIX + Sektor-ETFs für Marktbreite-Alert: grün=niedrige Vola + Tech stark, gelb=erhöhte Vola, rot=VIX>30 oder Tech deutlich schwächer als S&P.`,
+Nutze die Makro-Daten für Zinsumfeld-Alert: grün=stabile/fallende Zinsen, gelb=hawkish Signale, rot=aktives Tightening. Nutze VIX + Sektor-ETFs für Marktbreite-Alert: grün=niedrige Vola + Tech stark, gelb=erhöhte Vola, rot=VIX>30 oder Tech deutlich schwächer als S&P.
+Nutze die geopolitischen Daten für Geopolitik-Alert: grün=keine relevanten Risiken, gelb=moderate Risiken (Zölle, Handelskonflikte), orange=hohe Risiken (Sanktionen, Supply-Chain-Störungen), rot=kritische Risiken (Kriege, schwere Handelsembargos mit direktem Portfolio-Impact).`,
     "Du bist ein Portfolio-Stratege. Antworte NUR mit validem JSON. Kein Markdown. Keine Backticks. Kein Text.",
     false,
     2000
@@ -729,7 +737,7 @@ Nutze die Makro-Daten für Zinsumfeld-Alert: grün=stabile/fallende Zinsen, gelb
   return { overallStatus: "yellow", explanation: "Analyse konnte nicht strukturiert werden.", capexTrend: "stable", alerts: [{ name: "Parsing", status: "yellow", detail: "JSON-Parsing fehlgeschlagen. Bitte erneut versuchen." }], risks: ["Automatische Analyse fehlgeschlagen"], action: "Einzelergebnisse prüfen", nextEvent: "—" };
 }
 
-async function doTimingAnalysis(stockList, fmpData, insiderDataMap, macroData, marketData, extraBudget, dcaMonths, eurUsdRate, capexImpactData) {
+async function doTimingAnalysis(stockList, fmpData, insiderDataMap, macroData, marketData, extraBudget, dcaMonths, eurUsdRate, capexImpactData, geopolitikData) {
   const totalInvested = stockList.reduce((sum, s) => sum + s.cost, 0);
   const stockInfo = stockList.map(s => {
     const pctOfPortfolio = totalInvested > 0 ? (s.cost / totalInvested * 100).toFixed(1) : "0";
@@ -793,6 +801,13 @@ async function doTimingAnalysis(stockList, fmpData, insiderDataMap, macroData, m
     capexImpactBlock = `\n\nCapEx-Implikation (aktuelle Hyperscaler-Earnings & Guidance-Änderungen):\n${parts2.join("\n")}`;
   }
 
+  let geopolitikBlock = "";
+  if (geopolitikData?.events?.length > 0) {
+    const geoLines = geopolitikData.events.map(e => `• ${e.title} (${e.impact}, ${e.severity}): ${e.description} [${e.affectedTickers?.join(", ") || "—"}]`);
+    geopolitikBlock = `\n\nGeopolitische Risiken & Chancen (Risiko-Level: ${geopolitikData.riskLevel}):\n${geoLines.join("\n")}`;
+    if (geopolitikData.outlook) geopolitikBlock += `\nAusblick: ${geopolitikData.outlook}`;
+  }
+
   const raw = await callAPI(
     `Du analysierst Kurs-Timing für ein Portfolio.
 Gesamt investiert: €${totalInvested.toFixed(2)} in ${stockList.length} Positionen.
@@ -800,7 +815,7 @@ Gleichgewichtung wäre ${(100 / stockList.length).toFixed(1)}% pro Position.
 
 Aktien: ${stockInfo}
 
-Marktdaten & Kontext:${fmpBlock}${insiderBlock}${macroTimingBlock}${capexImpactBlock}
+Marktdaten & Kontext:${fmpBlock}${insiderBlock}${macroTimingBlock}${capexImpactBlock}${geopolitikBlock}
 
 Für JEDE Aktie: Bewerte ob der aktuelle Kurs eine Nachkaufgelegenheit, Halteposition, oder Gewinnmitnahme-Kandidat ist.
 ${extraBudget > 0 ? `\nSONDER-VERMÖGEN: €${extraBudget.toFixed(2)} verfügbar für DCA-unabhängige Nachkäufe über ${dcaMonths || 12} Monate.\nEmpfehle konkrete Nachkäufe NUR wenn aktuell wirklich attraktive Gelegenheiten bestehen. Das Budget muss NICHT sofort ausgegeben werden — es kann über den gesamten Zeitraum verteilt werden, zu Beginn, am Ende, oder alles auf einmal, je nach Marktlage. Leeres Array [] wenn aktuell nichts attraktiv genug ist.` : ""}
@@ -811,6 +826,7 @@ Antworte NUR mit validem JSON:
 WICHTIG: Übernimm fromHigh exakt aus den Marktdaten oben. Nicht selbst schätzen.
 Berücksichtige Insider-Verkäufe als Warnsignal (viele Verkäufe = vorsichtiger bei Nachkauf-Empfehlung).
 Berücksichtige den Makro-Kontext: VIX>30 = Angst = tendenziell gute Kaufgelegenheit. Invertierte Yield Curve = Rezessionsrisiko = vorsichtiger. Tech schwächer als S&P = Sektor-Rotation = Warnsignal.
+Berücksichtige geopolitische Risiken: Zölle, Sanktionen, Supply-Chain-Störungen können bestimmte Ticker überproportional treffen. Negativ betroffene Ticker vorsichtiger bei Nachkauf-Empfehlung.
 opportunityScore: 1-10 (1=alles teuer, 10=alles im Ausverkauf).
 rebalanceTrades: Umschichtungen nur wenn deutlich übergewichtete Positionen vorhanden UND untergewichtete attraktiver bewertet sind. Kann leer [] sein.
 takeProfits: Gewinnmitnahmen NUR empfehlen wenn das Gesamtportfolio sich in einem Abwärtstrend befindet oder bärisches Sentiment vorherrscht (Makro-Indikatoren negativ, breiter Markt schwächelt). Bei bullischem Sentiment stattdessen Umschichtung in rebalanceTrades vorschlagen (von überhitzter Position in attraktivere umschichten). Kann leer [] sein.
@@ -833,6 +849,58 @@ Alle Texte deutsch.`,
       return j;
     }
     return null;
+}
+
+async function doGeopolitikAnalysis(stockList, macroData, marketData) {
+  const sectors = [...new Set(stockList.map(s => s.sector))];
+  const tickerInfo = stockList.map(s => `${s.ticker} (${s.name}, ${s.sector})`).join(", ");
+  const sectorList = sectors.join(", ");
+
+  let macroContext = "";
+  if (macroData || marketData) {
+    const parts = [];
+    if (macroData?.fedFundsRate) parts.push(`Fed Funds Rate: ${macroData.fedFundsRate.current}%`);
+    if (macroData?.yieldSpread) parts.push(`Yield Spread: ${macroData.yieldSpread.current}% (${macroData.yieldSpread.status})`);
+    if (marketData?.vix) parts.push(`VIX: ${marketData.vix.price}`);
+    macroContext = `\n\nAktuelle Makro-Daten: ${parts.join(", ")}`;
+  }
+
+  const raw = await callAPI(
+    `Recherchiere NEUE geopolitische Entwicklungen der letzten 2-4 Wochen, die für dieses Portfolio relevant sind.
+
+WICHTIG: Nur Ereignisse die NEU sind oder sich kürzlich verändert haben. Keine altbekannten, bereits eingepreisten Themen (z.B. bestehende Exportkontrollen, laufende Kriege ohne neue Eskalation, bereits beschlossene Zölle). Der Markt hat diese Dinge längst verarbeitet. Fokussiere auf: neue Ankündigungen, Eskalationen, überraschende Wendungen, neue Sanktionen/Zölle, frische Supply-Chain-Störungen.
+
+PORTFOLIO:
+${tickerInfo}
+
+SEKTOREN: ${sectorList}${macroContext}
+
+Suche nach NEUEN Entwicklungen in: Handelszölle & Sanktionen, Kriege & Konflikte (neue Eskalationen), Supply-Chain-Störungen, Regulierung & Exportkontrollen, Rohstoff-Engpässe, diplomatische Entwicklungen.
+
+Denke in Wirkungsketten: Ereignis → direkte Folge → Branchenauswirkung → Portfolio-Impact.
+Beispiel: UAE Gas-Anlage teilweise zerstört → Heliumknappheit → wird in Halbleiterfertigung benötigt → betrifft MU, NVDA, AVGO.
+
+Wenn es aktuell keine relevanten NEUEN geopolitischen Entwicklungen gibt, antworte mit einem leeren events-Array und riskLevel "low".
+
+Antworte NUR mit validem JSON:
+{"summary":"3-5 Sätze Gesamteinschätzung deutsch","riskLevel":"low|medium|high|critical","events":[{"title":"Kurztitel deutsch","description":"2-3 Sätze deutsch mit Wirkungskette","impact":"positive|negative|neutral","severity":"low|medium|high","affectedTickers":["XXX"],"category":"tariffs|sanctions|conflict|supply_chain|regulation|commodities|diplomacy"}],"outlook":"2-3 Sätze Ausblick deutsch"}`,
+    "Du bist ein geopolitischer Analyst mit Fokus auf Finanzmärkte. Nutze web_search um NEUE geopolitische Entwicklungen der letzten Wochen zu recherchieren. Ignoriere altbekannte, eingepreiste Themen. Antworte NUR mit validem JSON. Kein Markdown.",
+    true,
+    1500
+  );
+  const j = extractJSON(raw);
+  if (j && j.events) {
+    if (j.summary) j.summary = cleanText(j.summary);
+    if (j.outlook) j.outlook = cleanText(j.outlook);
+    j.events = j.events.map(e => ({
+      ...e,
+      title: cleanText(e.title),
+      description: cleanText(e.description),
+    }));
+    j.timestamp = new Date().toISOString();
+    return j;
+  }
+  return null;
 }
 
 async function doSellPriority(stockList, fmpData, analysisData, timingData, insiderDataMap, eurUsdRate) {
@@ -913,7 +981,7 @@ rank: 1 = zuerst verkaufen, höchste Zahl = zuletzt verkaufen. ALLE Aktien müss
     return null;
 }
 
-async function doDCAPlan(stockList, totalBudget, months, extraBudget, fmpData, insiderDataMap, timingData, analysisData, macroData, marketData, eurUsdRate, capexImpactData) {
+async function doDCAPlan(stockList, totalBudget, months, extraBudget, fmpData, insiderDataMap, timingData, analysisData, macroData, marketData, eurUsdRate, capexImpactData, geopolitikData) {
   const ts0 = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   debugPush({ ts: ts0, label: `DCA-Plan Start: ${stockList.length} Aktien, Budget €${totalBudget}, ${months}M`, status: "pending", tokens: 0 });
   const startIdx = _debugLog.length - 1;
@@ -983,6 +1051,12 @@ async function doDCAPlan(stockList, totalBudget, months, extraBudget, fmpData, i
     capexImpactBlock = `\n\nAktuelle CapEx-Implikation (Hyperscaler-Earnings & Guidance):\n${cParts.join("\n")}`;
   }
 
+  let geoBlock = "";
+  if (geopolitikData?.events?.length > 0) {
+    const gLines = geopolitikData.events.map(e => `• ${e.title} (${e.impact}, ${e.severity}): ${e.description} [${e.affectedTickers?.join(", ") || "—"}]`);
+    geoBlock = `\n\nGeopolitische Risiken & Chancen (Risiko-Level: ${geopolitikData.riskLevel}):\n${gLines.join("\n")}`;
+  }
+
   const totalInvested = stockList.reduce((s, st) => s + st.cost, 0);
   const remainingBudget = Math.max(0, totalBudget - totalInvested);
   const monthlyBudget = (remainingBudget / months).toFixed(2);
@@ -1003,7 +1077,7 @@ BUDGET & ZEITRAUM:
 - Monatliches Budget: €${monthlyBudget}
 
 PORTFOLIO:
-${stockInfo}${fmpBlock}${insiderBlock}${macroBlock}${timingBlock}${analysisBlock}${capexImpactBlock}
+${stockInfo}${fmpBlock}${insiderBlock}${macroBlock}${timingBlock}${analysisBlock}${capexImpactBlock}${geoBlock}
 
 AUFGABE:
 Erstelle einen konkreten, monatlichen DCA-Plan. Berücksichtige:
@@ -1014,6 +1088,7 @@ Erstelle einen konkreten, monatlichen DCA-Plan. Berücksichtige:
 5. Insider-Aktivität — viele Insider-Käufe = positiv, viele Verkäufe = vorsichtiger
 6. Makro-Umfeld — Zinsumfeld und Marktlage einbeziehen
 7. CapEx-Implikation — Winners stärker gewichten, Losers reduzieren, Guidance-Änderungen berücksichtigen
+8. Geopolitische Risiken — bei negativen Events betroffene Ticker vorsichtiger gewichten
 7. Sektor-Diversifikation — Klumpenrisiko vermeiden
 8. Umschichtungen: Wenn Positionen deutlich übergewichtet sind und gleichzeitig untergewichtete Positionen attraktiver bewertet sind, schlage konkrete Umschichtungen vor (Verkauf X € von Aktie A → Kauf Aktie B). Nur vorschlagen wenn es wirklich sinnvoll ist — nicht erzwingen. Das Array kann leer [] sein.
 
@@ -1636,6 +1711,9 @@ function App() {
   const [dcaExtra, setDcaExtra] = useState("");
   const [dcaDetail, setDcaDetail] = useState(null);
   const [capexImpact, setCapexImpact] = useState(null);
+  const [geopolitik, setGeopolitik] = useState(null);
+  const [busyGeopolitik, setBusyGeopolitik] = useState(false);
+  const [showGeopolitikConfirm, setShowGeopolitikConfirm] = useState(false);
   const [dcaIncorporatesCapex, setDcaIncorporatesCapex] = useState(false);
   const [busyVerify, setBusyVerify] = useState(false);
   const [earningsDates, setEarningsDates] = useState(() => loadEarningsDates());
@@ -1674,6 +1752,7 @@ function App() {
       if (saved.dcaMonths) setDcaMonths(saved.dcaMonths);
       if (saved.dcaExtra) setDcaExtra(saved.dcaExtra);
       if (saved.capexImpact) setCapexImpact(saved.capexImpact);
+      if (saved.geopolitik) setGeopolitik(saved.geopolitik);
     }
     setDataLoaded(true);
     // Earnings-Kalender + EUR/USD-Kurs laden
@@ -1760,9 +1839,9 @@ function App() {
   }, []);
 
   const persistAll = useCallback((overrides = {}) => {
-    const payload = { stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun: lastRun?.toISOString(), logs, macro, marketIndicators, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact, ...overrides };
+    const payload = { stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun: lastRun?.toISOString(), logs, macro, marketIndicators, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact, geopolitik, ...overrides };
     saveData(payload);
-  }, [stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun, logs, macro, marketIndicators, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact]);
+  }, [stocks, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, lastRun, logs, macro, marketIndicators, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact, geopolitik]);
 
   const addStock = useCallback(() => {
     if (!addTicker.trim() || !addName.trim()) return;
@@ -1855,7 +1934,7 @@ function App() {
     setBusy(true); setPct(0); debugClear();
     setCapex([]); setTsmc(null); setDram(null); setNvidia(null);
     setPositions({}); setInsider(null); setAnalysis(null); setTiming(null); setLogs([]);
-    setMacro(null); setMarketIndicators(null);
+    setMacro(null); setMarketIndicators(null); setGeopolitik(null);
     addLog("Recherche gestartet…");
 
     let lCapex = [], lTsmc = null, lDram = null, lNvidia = null, lInsider = null;
@@ -1874,10 +1953,10 @@ function App() {
     let step = 0;
 
     try {
-      // Total: 1 Finnhub + 1 Macro + 2 capex + 2 indicators + 1 timing + 1 analysis + 2 earnings-deep
+      // Total: 1 Finnhub + 1 Macro + 1 earnings + 2 capex + 2 indicators + 1 geopolitik + 1 capex-impact + 1 timing + 1 analysis
       const hasFmp = !!getFmpKey();
       const hasFred = !!getFredKey();
-      const total = (hasFmp ? 1 : 0) + (hasFred || hasFmp ? 1 : 0) + 2 + 2 + 1 + 1 + 2;
+      const total = (hasFmp ? 1 : 0) + (hasFred || hasFmp ? 1 : 0) + 1 + 2 + 2 + 1 + 1 + 1 + 1;
       setTotalSteps(total);
 
       const advance = (label) => { step++; setStepNum(step); setStepName(label); setPct(Math.round((step / total) * 100)); };
@@ -1932,8 +2011,28 @@ function App() {
         addLog(`  ✓ Makro: ${parts.length > 0 ? parts.join(", ") : "keine Daten"}`);
       }
 
-      // Phase 1: CapEx — 2 calls instead of 4
+      // Insider-Daten als Zusammenfassung bereitstellen
+      lInsider = hasFmp && Object.keys(lInsiderData).length > 0
+        ? { sentiment: Object.values(lInsiderData).some(d => d.totalSells > 3) ? "bearish" : Object.values(lInsiderData).every(d => d.totalSells === 0) ? "bullish" : "neutral",
+            summary: Object.entries(lInsiderData).map(([t, d]) => `${t}: ${d.totalSells} Verkäufe ($${(d.sellVolume/1e6).toFixed(1)}M), ${d.totalBuys} Käufe`).join("; ") }
+        : lInsider;
+      setInsider(lInsider);
+
+      // ── KONTEXT RECHERCHIEREN (Web Search) ──────────────
+
+      // Phase 2: Hyperscaler Earnings Deep-Dive
       if (check()) return;
+      advance("Earnings-Ergebnisse Hyperscaler");
+      addLog("→ Hyperscaler Earnings + Guidance-Änderungen");
+      const earningsDeep = await doMultiSearch(
+        "Microsoft Alphabet Google Amazon Meta latest quarterly earnings results revenue guidance capex spending change 2026",
+        ["Earnings Results", "CapEx Guidance Changes"]
+      );
+      addLog("  ✓ Earnings: " + earningsDeep["Earnings Results"].sentiment + ", Guidance: " + earningsDeep["CapEx Guidance Changes"].sentiment);
+
+      // Phase 3: CapEx
+      if (check()) return;
+      await delay(API_DELAY);
       advance("Alphabet + Meta CapEx");
       addLog("→ Alphabet + Meta CapEx");
       const capex1 = await doMultiSearch("Alphabet Google Meta Platforms capital expenditure capex 2026 data center spending guidance", ["Alphabet CapEx", "Meta CapEx"]);
@@ -1950,7 +2049,7 @@ function App() {
       setCapex([...lCapex]);
       addLog("  ✓ Microsoft: " + capex2["Microsoft CapEx"].sentiment + ", Amazon: " + capex2["Amazon CapEx"].sentiment);
 
-      // Phase 2: Leading indicators — 2 calls instead of 3
+      // Phase 4: Markt-Indikatoren (TSMC + DRAM + NVIDIA)
       if (check()) return;
       await delay(API_DELAY);
       advance("TSMC + DRAM");
@@ -1968,25 +2067,19 @@ function App() {
       setNvidia(lNvidia);
       addLog("  ✓ NVIDIA: " + lNvidia.sentiment);
 
-      // Insider-Daten als Zusammenfassung bereitstellen
-      lInsider = hasFmp && Object.keys(lInsiderData).length > 0
-        ? { sentiment: Object.values(lInsiderData).some(d => d.totalSells > 3) ? "bearish" : Object.values(lInsiderData).every(d => d.totalSells === 0) ? "bullish" : "neutral",
-            summary: Object.entries(lInsiderData).map(([t, d]) => `${t}: ${d.totalSells} Verkäufe ($${(d.sellVolume/1e6).toFixed(1)}M), ${d.totalBuys} Käufe`).join("; ") }
-        : lInsider;
-      setInsider(lInsider);
-
-      // Phase 4: Hyperscaler Earnings Deep-Dive
+      // Phase 5: Geopolitik-Analyse
       if (check()) return;
       await delay(API_DELAY);
-      advance("Earnings-Ergebnisse Hyperscaler");
-      addLog("→ Hyperscaler Earnings + Guidance-Änderungen");
-      const earningsDeep = await doMultiSearch(
-        "Microsoft Alphabet Google Amazon Meta latest quarterly earnings results revenue guidance capex spending change 2026",
-        ["Earnings Results", "CapEx Guidance Changes"]
-      );
-      addLog("  ✓ Earnings: " + earningsDeep["Earnings Results"].sentiment + ", Guidance: " + earningsDeep["CapEx Guidance Changes"].sentiment);
+      advance("Geopolitik-Analyse");
+      addLog("→ Geopolitik-Analyse…");
+      let lGeopolitik = null;
+      lGeopolitik = await doGeopolitikAnalysis(stocks, lMacro, lMarket);
+      setGeopolitik(lGeopolitik);
+      addLog("  ✓ Geopolitik: Risiko " + (lGeopolitik?.riskLevel || "?") + ", " + (lGeopolitik?.events?.length || 0) + " Ereignisse");
 
-      // Phase 5: CapEx-Implikation für Portfolio
+      // ── BEWERTEN (LLM, kein Web) ──────────────
+
+      // Phase 6: CapEx-Implikation für Portfolio
       if (check()) return;
       await delay(API_DELAY);
       advance("CapEx-Portfolio-Implikation");
@@ -2028,22 +2121,22 @@ Antworte NUR mit validem JSON:
       setDcaIncorporatesCapex(false);
       addLog("✓ CapEx-Implikation: " + (lCapexImpact?.impact || "?"));
 
-      // Phase 6: Timing analysis — includes earnings deep-dive + capex impact data
+      // Phase 7: Timing-Bewertung
       if (check()) return;
       await delay(API_DELAY);
       advance("Timing-Bewertung");
       addLog("→ Timing-Bewertung…");
-      const tim = await doTimingAnalysis(stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, lCapexImpact);
+      const tim = await doTimingAnalysis(stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, lCapexImpact, lGeopolitik);
       setTiming(tim);
       addLog("✓ Timing: Score " + (tim?.opportunityScore || "?") + "/10");
 
-      // Phase 7: Gesamtanalyse — am Ende, bezieht ALLE Erkenntnisse ein
+      // Phase 8: Gesamtanalyse
       if (check()) return;
       await delay(API_DELAY);
       advance("Gesamtanalyse");
       addLog("→ Gesamtanalyse…");
       const allData = { capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, insider: lInsider };
-      const ana = await doAnalyze(allData, stocks, fmpData, lInsiderData, lMacro, lMarket, lCapexImpact, tim);
+      const ana = await doAnalyze(allData, stocks, fmpData, lInsiderData, lMacro, lMarket, lCapexImpact, tim, lGeopolitik);
       setAnalysis(ana);
       addLog("✓ Status: " + (ana?.overallStatus || "?"));
 
@@ -2052,7 +2145,7 @@ Antworte NUR mit validem JSON:
       debugSaveToServer(stocks, fmpData, eurUsdRate);
 
       setLogs(prevLogs => {
-        saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, lastRun: now.toISOString(), logs: prevLogs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact: lCapexImpact });
+        saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, lastRun: now.toISOString(), logs: prevLogs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact: lCapexImpact, geopolitik: lGeopolitik });
         return prevLogs;
       });
     } catch (e) {
@@ -2124,7 +2217,7 @@ Antworte NUR mit validem JSON:
       if (check()) return;
       setTimingStep("Timing-Bewertung…");
       addLog("Timing-Bewertung läuft…");
-      const tim = await doTimingAnalysis(stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, capexImpact);
+      const tim = await doTimingAnalysis(stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, capexImpact, geopolitik);
       if (check()) return;
       setTiming(tim);
       addLog("✅ Timing-Analyse abgeschlossen");
@@ -2152,6 +2245,104 @@ Antworte NUR mit validem JSON:
       debugSaveToServer(stocks, fmpData, eurUsdRate, "timing");
     }
   }, [stocks]);
+
+  /* ═══ STANDALONE GEOPOLITIK ═══ */
+  const runGeopolitik = useCallback(async (runTimingAfter = false) => {
+    _abortCtrl = new AbortController();
+    setBusyGeopolitik(true);
+    addLog("Geopolitik-Analyse gestartet…");
+    try {
+      const geo = await doGeopolitikAnalysis(stocks, macro, marketIndicators);
+      setGeopolitik(geo);
+      addLog("✓ Geopolitik: Risiko " + (geo?.riskLevel || "?") + ", " + (geo?.events?.length || 0) + " Ereignisse");
+      try {
+        const existing = loadData();
+        saveData({ ...(existing || {}), geopolitik: geo, stocks });
+      } catch {}
+      if (runTimingAfter) {
+        setBusyGeopolitik(false);
+        addLog("→ Timing-Analyse wird gestartet…");
+        setBusyTiming(true); debugClear();
+        setTimingStep("Kursdaten…");
+        let fmpData = finnhubData || {};
+        let lInsiderData = insiderData || {};
+        let lMacro = macro, lMarket = marketIndicators;
+        const check = () => {
+          if (_abortCtrl?.signal?.aborted) {
+            addLog("⛔ Timing abgebrochen.");
+            setBusyTiming(false);
+            setTimingStep("");
+            debugSaveToServer(stocks, fmpData, eurUsdRate, "timing");
+            return true;
+          }
+          return false;
+        };
+        try {
+          if (getFmpKey()) {
+            if (Object.keys(fmpData).length === 0) {
+              setTimingStep("Fundamentaldaten + Insider + Makro…");
+              addLog("Lade Fundamentaldaten, Insider, Makro…");
+              const [stockDataResult, insiderResult, fredResult, marketResult] = await Promise.all([
+                fetchStockData(stocks.map(s => s.ticker)),
+                fetchInsiderData(stocks.map(s => s.ticker)),
+                getFredKey() ? fetchFredData() : Promise.resolve(null),
+                fetchMarketIndicators(),
+              ]);
+              if (check()) return;
+              fmpData = stockDataResult;
+              lInsiderData = insiderResult;
+              lMacro = fredResult;
+              lMarket = marketResult;
+              addLog(`Fundamentaldaten für ${Object.keys(fmpData).length} Ticker geladen`);
+              setInsiderData(lInsiderData);
+              if (lMacro) setMacro(lMacro);
+              if (lMarket) setMarketIndicators(lMarket);
+            }
+            setTimingStep("52-Wochen-Hochs verifizieren…");
+            fmpData = await verify52WeekHighs(fmpData);
+            if (check()) return;
+            setFinnhubData(fmpData);
+          }
+          if (check()) return;
+          setTimingStep("Timing-Bewertung…");
+          addLog("Timing-Bewertung läuft…");
+          const tim = await doTimingAnalysis(stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, capexImpact, geo);
+          if (check()) return;
+          setTiming(tim);
+          addLog("✅ Timing-Analyse abgeschlossen");
+          setBusyTiming(false);
+          setTimingStep("");
+          debugSaveToServer(stocks, fmpData, eurUsdRate, "timing");
+          try {
+            const existing = loadData();
+            saveData({ ...(existing || {}), timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, geopolitik: geo, stocks });
+          } catch {}
+        } catch (e) {
+          if (e.name === "AbortError") {
+            const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            debugPush({ ts, label: "⛔ Timing abgebrochen (manuell)", status: "error", tokens: 0, code: 0 });
+            addLog("⛔ Abgebrochen.");
+          } else {
+            console.error("Timing-Analyse Fehler:", e);
+            const ts = new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            debugPush({ ts, label: `⛔ Timing abgebrochen: ${e.message}`, status: "error", tokens: 0, code: 0 });
+            addLog(`⛔ Fehler: ${e.message}`);
+          }
+          setBusyTiming(false);
+          setTimingStep("");
+          debugSaveToServer(stocks, fmpData, eurUsdRate, "timing");
+        }
+      }
+    } catch (e) {
+      if (e.name === "AbortError") {
+        addLog("⛔ Abgebrochen.");
+      } else {
+        console.error("Geopolitik-Analyse Fehler:", e);
+        addLog(`⛔ Fehler: ${e.message}`);
+      }
+    }
+    setBusyGeopolitik(false);
+  }, [stocks, macro, marketIndicators, finnhubData, insiderData, eurUsdRate, capexImpact]);
 
   /* ═══ SELL PRIORITY UPDATE ═══ */
   const runSellPriority = useCallback(async () => {
@@ -2198,9 +2389,10 @@ Antworte NUR mit validem JSON:
     { name: "NVIDIA-Guidance", status: "green", detail: null },
     { name: "Zinsumfeld", status: "green", detail: null },
     { name: "Marktbreite", status: "green", detail: null },
+    { name: "Geopolitik", status: "green", detail: null },
   ];
 
-  const TABS = [["overview", "Überblick"], ["capex", "CapEx"], ["macro", "Makro"], ["positions", "Positionen"], ["timing", "Timing"], ["dca", "DCA"], ["alerts", "Alerts"], ["playbook", "Playbook"], ["calendar", "Kalender"]];
+  const TABS = [["overview", "Überblick"], ["capex", "CapEx"], ["macro", "Makro"], ["positions", "Positionen"], ["geopolitik", "Geopolitik"], ["timing", "Timing"], ["dca", "DCA"], ["alerts", "Alerts"], ["playbook", "Playbook"], ["calendar", "Kalender"]];
   const badgeColor = st ? X[st] : "#64748b";
   const badgeText = busy ? "Recherche…" : (hasData ? stMap[st] : "Bereit");
 
@@ -2885,6 +3077,70 @@ Antworte NUR mit validem JSON:
         insider && React.createElement(RCard, { t: "Insider-Aktivitäten", d: insider })
       ),
 
+      /* ═══ GEOPOLITIK ═══ */
+      tab === "geopolitik" && React.createElement(React.Fragment, null,
+        React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, "Geopolitische Risiken und Chancen für dein Portfolio — Zölle, Sanktionen, Konflikte, Supply-Chain-Störungen."),
+
+        // Confirm Dialog
+        showGeopolitikConfirm && React.createElement("div", { style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 10, padding: 14, marginBottom: 12 } },
+          React.createElement("div", { style: { fontSize: 12, fontWeight: 600, color: "#e2e8f0", marginBottom: 10 } }, "Soll die Timing-Analyse direkt im Anschluss mitlaufen?"),
+          React.createElement("div", { style: { display: "flex", gap: 8 } },
+            React.createElement("button", { onClick: () => { setShowGeopolitikConfirm(false); runGeopolitik(true); }, style: { flex: 1, padding: 8, borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, fontFamily: "inherit", background: `linear-gradient(135deg,${X.cyan}cc,${X.indigo})`, color: "#fff" } }, "Ja, mit Timing"),
+            React.createElement("button", { onClick: () => { setShowGeopolitikConfirm(false); runGeopolitik(false); }, style: { flex: 1, padding: 8, borderRadius: 8, border: "1px solid #334155", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#94a3b8" } }, "Nur Geopolitik"),
+            React.createElement("button", { onClick: () => setShowGeopolitikConfirm(false), style: { padding: "8px 14px", borderRadius: 8, border: "1px solid #334155", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#64748b" } }, "Abbrechen")
+          )
+        ),
+
+        // Run Button
+        React.createElement("button", { onClick: () => { if (busyGeopolitik) { _abortCtrl?.abort(); return; } if (checkKeys()) setShowGeopolitikConfirm(true); }, disabled: busy || busyTiming, style: {
+          width: "100%", padding: 10, marginBottom: 14, borderRadius: 10, border: "none",
+          cursor: (busy || busyTiming) ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit",
+          background: (busy || busyTiming) ? "#1e293b" : busyGeopolitik ? `linear-gradient(135deg,#dc2626,#991b1b)` : `linear-gradient(135deg,#f59e0b,#d97706)`,
+          color: (busy || busyTiming) ? "#64748b" : "#fff",
+          boxShadow: (busy || busyTiming) ? "none" : busyGeopolitik ? "0 4px 14px #dc262622" : "0 4px 14px #f59e0b22",
+        } }, busyGeopolitik ? "⛔ Abbrechen" : "🌍  Geopolitik analysieren"),
+
+        // Results
+        geopolitik && React.createElement(React.Fragment, null,
+          // Risk Level Badge
+          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 12 } },
+            React.createElement("div", { style: { fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 6, background: geopolitik.riskLevel === "critical" ? `${X.red}33` : geopolitik.riskLevel === "high" ? `${X.orange}33` : geopolitik.riskLevel === "medium" ? `${X.yellow}33` : `${X.green}33`, color: geopolitik.riskLevel === "critical" ? X.red : geopolitik.riskLevel === "high" ? X.orange : geopolitik.riskLevel === "medium" ? X.yellow : X.green } }, `Risiko: ${geopolitik.riskLevel?.toUpperCase()}`),
+            geopolitik.timestamp && React.createElement("span", { style: { fontSize: 10, color: "#64748b" } }, `Stand: ${new Date(geopolitik.timestamp).toLocaleString("de-DE")}`)
+          ),
+
+          // Summary
+          React.createElement("div", { style: { background: "#0f172a", borderRadius: 10, padding: 12, marginBottom: 12, border: "1px solid #1e293b" } },
+            React.createElement("div", { style: { fontSize: 12, lineHeight: 1.6, color: "#cbd5e1" } }, geopolitik.summary)
+          ),
+
+          // Events
+          geopolitik.events?.length > 0 && React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 } },
+            geopolitik.events.map((ev, i) =>
+              React.createElement("div", { key: i, style: { background: "#0f172a", borderRadius: 10, padding: 12, border: `1px solid ${ev.impact === "negative" ? X.red + "44" : ev.impact === "positive" ? X.green + "44" : "#1e293b"}` } },
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" } },
+                  React.createElement("span", { style: { fontSize: 12, fontWeight: 700, color: "#e2e8f0" } }, ev.title),
+                  React.createElement("span", { style: { fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: ev.impact === "negative" ? `${X.red}33` : ev.impact === "positive" ? `${X.green}33` : `${X.yellow}33`, color: ev.impact === "negative" ? X.red : ev.impact === "positive" ? X.green : X.yellow } }, ev.impact),
+                  React.createElement("span", { style: { fontSize: 9, fontWeight: 600, padding: "2px 6px", borderRadius: 4, background: "#1e293b", color: "#94a3b8" } }, ev.severity),
+                  React.createElement("span", { style: { fontSize: 9, fontWeight: 600, padding: "2px 6px", borderRadius: 4, background: "#1e293b", color: "#94a3b8" } }, ev.category)
+                ),
+                React.createElement("div", { style: { fontSize: 11, lineHeight: 1.6, color: "#94a3b8", marginBottom: 6 } }, ev.description),
+                ev.affectedTickers?.length > 0 && React.createElement("div", { style: { display: "flex", gap: 4, flexWrap: "wrap" } },
+                  ev.affectedTickers.map(t => React.createElement("span", { key: t, style: { fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: `${X.indigo}33`, color: X.indigo, fontFamily: "'JetBrains Mono', monospace" } }, t))
+                )
+              )
+            )
+          ),
+
+          // Outlook
+          geopolitik.outlook && React.createElement("div", { style: { background: "#0f172a", borderRadius: 10, padding: 12, border: "1px solid #1e293b" } },
+            React.createElement("div", { style: { fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 } }, "Ausblick"),
+            React.createElement("div", { style: { fontSize: 11, lineHeight: 1.6, color: "#94a3b8" } }, geopolitik.outlook)
+          )
+        ),
+
+        !geopolitik && !busyGeopolitik && React.createElement("div", { style: { textAlign: "center", padding: 30, color: "#475569", fontSize: 12 } }, "Noch keine Geopolitik-Analyse vorhanden. Klicke den Button oben um zu starten.")
+      ),
+
       /* ═══ TIMING ═══ */
       tab === "timing" && React.createElement(React.Fragment, null,
         React.createElement("p", { style: { fontSize: 12, color: "#94a3b8", marginBottom: 10 } }, "Kurs-Timing: Nachkaufen bei Korrekturen, Gewinne mitnehmen bei Überhitzung."),
@@ -3110,7 +3366,7 @@ Antworte NUR mit validem JSON:
             if (!checkKeys()) return;
             setBusyDca(true);
             try {
-              const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate, capexImpact);
+              const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate, capexImpact, geopolitik);
               setDcaPlan(plan);
               persistAll({ dcaPlan: plan });
             } catch (e) {
@@ -3136,7 +3392,7 @@ Antworte NUR mit validem JSON:
               if (!checkKeys()) return;
               setBusyDca(true);
               try {
-                const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate, capexImpact);
+                const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate, capexImpact, geopolitik);
                 setDcaPlan(plan);
                 setDcaIncorporatesCapex(true);
               } catch (e) { console.error("DCA rebalance error:", e); }
