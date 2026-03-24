@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "20.03.2026, 01:52 Uhr";
+const BUILD_TIMESTAMP = "25.03.2026, 01:45 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -865,28 +865,46 @@ async function doGeopolitikAnalysis(stockList, macroData, marketData) {
     macroContext = `\n\nAktuelle Makro-Daten: ${parts.join(", ")}`;
   }
 
+  const today = new Date().toISOString().slice(0, 10);
   const raw = await callAPI(
-    `Recherchiere NEUE geopolitische Entwicklungen der letzten 2-4 Wochen, die für dieses Portfolio relevant sind.
+    `HEUTIGES DATUM: ${today}
 
-WICHTIG: Nur Ereignisse die NEU sind oder sich kürzlich verändert haben. Keine altbekannten, bereits eingepreisten Themen (z.B. bestehende Exportkontrollen, laufende Kriege ohne neue Eskalation, bereits beschlossene Zölle). Der Markt hat diese Dinge längst verarbeitet. Fokussiere auf: neue Ankündigungen, Eskalationen, überraschende Wendungen, neue Sanktionen/Zölle, frische Supply-Chain-Störungen.
+Recherchiere geopolitische Entwicklungen die HEUTE (${today}) und in den letzten Tagen für dieses Portfolio relevant sind.
+
+SUCHSTRATEGIE — führe mehrere web_search-Aufrufe durch:
+1. TAGESAKTUELL: Suche nach heutigen Ereignissen: "geopolitical news today ${today}", "trade sanctions today", "market geopolitics ${today}"
+2. SEKTOR-SPEZIFISCH: Suche nach den wichtigsten Sektoren + "geopolitical risk" oder "sanctions" oder "tariffs" (z.B. "${stockList[0]?.sector || 'semiconductor'} tariffs ${today.slice(0,7)}")
+3. SCHLAGZEILEN: "trade war update ${today.slice(0,7)}", "sanctions news ${today.slice(0,7)}", "export controls ${today.slice(0,7)}"
+4. REGIONEN: "US China trade ${today.slice(0,7)}", "EU regulation tech ${today.slice(0,7)}", "Taiwan strait", "Middle East oil"
+Nutze MINDESTENS 4 verschiedene web_search-Aufrufe mit unterschiedlichen Suchbegriffen. Priorisiere tagesaktuelle Ergebnisse.
 
 PORTFOLIO:
 ${tickerInfo}
 
 SEKTOREN: ${sectorList}${macroContext}
 
-Suche nach NEUEN Entwicklungen in: Handelszölle & Sanktionen, Kriege & Konflikte (neue Eskalationen), Supply-Chain-Störungen, Regulierung & Exportkontrollen, Rohstoff-Engpässe, diplomatische Entwicklungen.
+ANALYSE-FOKUS:
+- Handelszölle & Sanktionen (neue oder geänderte)
+- Kriege & Konflikte (Eskalationen, Waffenstillstände, neue Fronten)
+- Supply-Chain-Störungen (Häfen, Handelsrouten, Produktionsausfälle)
+- Regulierung & Exportkontrollen (neue Gesetze, Verschärfungen)
+- Rohstoff-Engpässe (Energie, Metalle, seltene Erden)
+- Diplomatische Entwicklungen (Abkommen, Brüche, Allianzen)
 
 Denke in Wirkungsketten: Ereignis → direkte Folge → Branchenauswirkung → Portfolio-Impact.
-Beispiel: UAE Gas-Anlage teilweise zerstört → Heliumknappheit → wird in Halbleiterfertigung benötigt → betrifft MU, NVDA, AVGO.
+Beispiel: Neue Ereignisse in Land X → Ressource/Komponente wird knapp → wird in Branche Y benötigt → betrifft Ticker A, B, C.
 
-Wenn es aktuell keine relevanten NEUEN geopolitischen Entwicklungen gibt, antworte mit einem leeren events-Array und riskLevel "low".
+PRIORISIERUNG:
+1. Tagesaktuelle Ereignisse (heute/gestern) — höchste Priorität, immer aufnehmen wenn portfoliorelevant
+2. Entwicklungen der letzten 1-2 Wochen — hohe Priorität
+3. Entwicklungen der letzten 3-4 Wochen — nur wenn signifikant
+Bereits seit Monaten bekannte Dauerthemen OHNE neue Wendung sind eingepreist und sollen NICHT aufgenommen werden. Wenn es keine relevanten neuen Entwicklungen gibt, antworte mit leerem events-Array und riskLevel "low".
 
 Antworte NUR mit validem JSON:
 {"summary":"3-5 Sätze Gesamteinschätzung deutsch","riskLevel":"low|medium|high|critical","events":[{"title":"Kurztitel deutsch","description":"2-3 Sätze deutsch mit Wirkungskette","impact":"positive|negative|neutral","severity":"low|medium|high","affectedTickers":["XXX"],"category":"tariffs|sanctions|conflict|supply_chain|regulation|commodities|diplomacy"}],"outlook":"2-3 Sätze Ausblick deutsch"}`,
-    "Du bist ein geopolitischer Analyst mit Fokus auf Finanzmärkte. Nutze web_search um NEUE geopolitische Entwicklungen der letzten Wochen zu recherchieren. Ignoriere altbekannte, eingepreiste Themen. Antworte NUR mit validem JSON. Kein Markdown.",
+    "Du bist ein geopolitischer Analyst mit Fokus auf Finanzmärkte. Heute ist " + today + ". Nutze web_search MEHRFACH mit verschiedenen, gezielten Suchbegriffen um aktuelle geopolitische Entwicklungen zu finden. Suche auf Englisch für bessere Ergebnisse. Antworte NUR mit validem JSON. Kein Markdown.",
     true,
-    1500
+    2000
   );
   const j = extractJSON(raw);
   if (j && j.events) {
