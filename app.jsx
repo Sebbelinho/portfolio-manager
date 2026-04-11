@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "11.04.2026, 20:37 Uhr";
+const BUILD_TIMESTAMP = "11.04.2026, 20:41 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -2626,7 +2626,7 @@ Antworte NUR mit validem JSON:
             { l: "CapEx-Trend", v: hasData ? (trMap[analysis.capexTrend] || "—") : "—", c: hasData ? (analysis.capexTrend === "accelerating" ? X.green : analysis.capexTrend === "stable" ? X.yellow : X.red) : "#64748b", s: hasData ? "Live" : "" },
             { l: "Status", v: hasData ? stMap[analysis.overallStatus] : "—", c: hasData ? X[analysis.overallStatus] : "#64748b", s: hasData ? (analysis.nextEvent || "").slice(0, 32) : "" },
           ].map((c, i) =>
-            React.createElement("div", { key: i, style: { background: "#111827", borderRadius: 12, padding: "12px 11px", border: c.warn ? `2px solid ${X.orange}` : "1px solid #1e293b", minWidth: 0, overflow: "hidden", position: "relative" } },
+            React.createElement("div", { key: i, style: { background: "#111827", borderRadius: 12, padding: "12px 11px", border: c.warn ? `2px solid ${X.orange}` : "1px solid #1e293b", minWidth: 0, overflow: c.info && showDashInfo ? "visible" : "hidden", position: "relative" } },
               React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } },
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
                   React.createElement("span", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, c.l),
