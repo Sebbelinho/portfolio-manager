@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "11.04.2026, 20:41 Uhr";
+const BUILD_TIMESTAMP = "11.04.2026, 20:48 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -2939,7 +2939,7 @@ Antworte NUR mit validem JSON:
                 React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.purple, flexShrink: 0 } }, pos.ticker),
                 React.createElement("div", { style: { minWidth: 0 } },
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
-                    React.createElement("span", { style: { fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, pos.name),
+                    React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, pos.name),
                     React.createElement(TypeBadge, { type: "capex" }),
                     isSold(pos) && React.createElement("span", { style: { fontSize: 8, padding: "2px 6px", borderRadius: 8, background: `${X.red}22`, color: X.red, fontWeight: 700, letterSpacing: ".04em" } }, "VERKAUFT"),
                     !isSold(pos) && (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — ⓘ klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
@@ -3091,7 +3091,7 @@ Antworte NUR mit validem JSON:
                   React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: `${X.cyan}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.cyan, flexShrink: 0 } }, pos.ticker),
                   React.createElement("div", { style: { minWidth: 0 } },
                     React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
-                      React.createElement("span", { style: { fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, pos.name),
+                      React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, pos.name),
                       React.createElement(TypeBadge, { type: "other" }),
                       isSold(pos) && React.createElement("span", { style: { fontSize: 8, padding: "2px 6px", borderRadius: 8, background: `${X.red}22`, color: X.red, fontWeight: 700, letterSpacing: ".04em" } }, "VERKAUFT"),
                       !isSold(pos) && (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — ⓘ klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
