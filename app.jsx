@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "25.03.2026, 00:47 Uhr";
+const BUILD_TIMESTAMP = "11.04.2026, 20:24 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -1414,19 +1414,38 @@ function calcPL(stock, currentPriceUsd, eurUsdRate) {
   // Alle Preise in EUR — Initiale Anteile
   const nachkaufSum = (stock.purchases || []).reduce((s, p) => s + p.amount, 0);
   const initialCost = stock.cost - nachkaufSum;
-  let totalShares = stock.pricePerShare > 0 ? initialCost / stock.pricePerShare : 0;
+  let boughtShares = stock.pricePerShare > 0 ? initialCost / stock.pricePerShare : 0;
   let totalInvested = initialCost;
   for (const p of (stock.purchases || [])) {
     if (p.pricePerShare && p.pricePerShare > 0) {
-      totalShares += p.amount / p.pricePerShare;
+      boughtShares += p.amount / p.pricePerShare;
     }
     totalInvested += p.amount;
   }
-  if (totalShares <= 0) return null;
-  const avgCost = totalInvested / totalShares;
+  if (boughtShares <= 0) return null;
+  const avgCost = totalInvested / boughtShares;
+  // Verkäufe abziehen
+  const soldShares = (stock.sales || []).reduce((s, sale) => s + (sale.shares || 0), 0);
+  const totalShares = boughtShares - soldShares;
+  const soldCost = soldShares * avgCost;
+  const remainingInvested = totalInvested - soldCost;
+  if (totalShares <= 0) return { plPct: 0, avgCost, totalShares: 0, totalInvested: remainingInvested, currentValue: 0, boughtShares, soldShares, soldCost };
   const currentValue = currentPriceEur * totalShares;
   const plPct = ((currentPriceEur - avgCost) / avgCost) * 100;
-  return { plPct, avgCost, totalShares, totalInvested, currentValue };
+  return { plPct, avgCost, totalShares, totalInvested: remainingInvested, currentValue, boughtShares, soldShares, soldCost };
+}
+
+function isSold(stock) {
+  if (stock.sold) return true; // legacy flag
+  if (!stock.sales?.length) return false;
+  const nachkaufSum = (stock.purchases || []).reduce((s, p) => s + p.amount, 0);
+  const initialCost = stock.cost - nachkaufSum;
+  let boughtShares = stock.pricePerShare > 0 ? initialCost / stock.pricePerShare : 0;
+  for (const p of (stock.purchases || [])) {
+    if (p.pricePerShare && p.pricePerShare > 0) boughtShares += p.amount / p.pricePerShare;
+  }
+  const soldShares = stock.sales.reduce((s, sale) => s + (sale.shares || 0), 0);
+  return soldShares >= boughtShares - 0.001; // float tolerance
 }
 
 function holdingDuration(dateStr) {
@@ -1811,6 +1830,10 @@ function App() {
   const [editNkAmount, setEditNkAmount] = useState("");
   const [editNkPPS, setEditNkPPS] = useState("");
   const [editNkDate, setEditNkDate] = useState("");
+  const [sellTicker, setSellTicker] = useState(null);
+  const [sellDate, setSellDate] = useState(new Date().toISOString().slice(0, 10));
+  const [sellPrice, setSellPrice] = useState("");
+  const [sellShares, setSellShares] = useState("");
   const [keyWarning, setKeyWarning] = useState(null);
 
   const checkKeys = useCallback(() => {
@@ -1940,6 +1963,40 @@ function App() {
       saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
       return updated;
     });
+  }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
+
+  const addSale = useCallback((ticker, shares, pricePerShare, date) => {
+    const numShares = parseFloat(shares);
+    const numPrice = parseFloat(pricePerShare);
+    if (!numShares || numShares <= 0) return;
+    setStocks(prev => {
+      const updated = prev.map(s => {
+        if (s.ticker !== ticker) return s;
+        const newSales = [...(s.sales || []), { shares: numShares, pricePerShare: numPrice || 0, date: date || new Date().toISOString().slice(0, 10) }];
+        const newStock = { ...s, sales: newSales };
+        // Legacy sold flag setzen wenn alles verkauft
+        if (isSold(newStock)) newStock.sold = true;
+        return newStock;
+      });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
+      return updated;
+    });
+    setSellTicker(null); setSellDate(new Date().toISOString().slice(0, 10)); setSellPrice(""); setSellShares("");
+  }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
+
+  const removeSale = useCallback((ticker, idx) => {
+    setStocks(prev => {
+      const updated = prev.map(s => {
+        if (s.ticker !== ticker || !s.sales) return s;
+        const newSales = s.sales.filter((_, i) => i !== idx);
+        const newStock = { ...s, sales: newSales };
+        if (!isSold(newStock)) newStock.sold = false;
+        return newStock;
+      });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
+      return updated;
+    });
+    setConfirmAction(null);
   }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
 
   /* ═══ RESEARCH ═══ */
@@ -2144,7 +2201,8 @@ Antworte NUR mit validem JSON:
       await delay(API_DELAY);
       advance("Timing-Bewertung");
       addLog("→ Timing-Bewertung…");
-      const tim = await doTimingAnalysis(stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, lCapexImpact, lGeopolitik);
+      const activeOnly = stocks.filter(s => !isSold(s));
+      const tim = await doTimingAnalysis(activeOnly, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, lCapexImpact, lGeopolitik);
       setTiming(tim);
       addLog("✓ Timing: Score " + (tim?.opportunityScore || "?") + "/10");
 
@@ -2154,7 +2212,7 @@ Antworte NUR mit validem JSON:
       advance("Gesamtanalyse");
       addLog("→ Gesamtanalyse…");
       const allData = { capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, insider: lInsider };
-      const ana = await doAnalyze(allData, stocks, fmpData, lInsiderData, lMacro, lMarket, lCapexImpact, tim, lGeopolitik);
+      const ana = await doAnalyze(allData, activeOnly, fmpData, lInsiderData, lMacro, lMarket, lCapexImpact, tim, lGeopolitik);
       setAnalysis(ana);
       addLog("✓ Status: " + (ana?.overallStatus || "?"));
 
@@ -2235,7 +2293,7 @@ Antworte NUR mit validem JSON:
       if (check()) return;
       setTimingStep("Timing-Bewertung…");
       addLog("Timing-Bewertung läuft…");
-      const tim = await doTimingAnalysis(stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, capexImpact, geopolitik);
+      const tim = await doTimingAnalysis(stocks.filter(s => !isSold(s)), fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, capexImpact, geopolitik);
       if (check()) return;
       setTiming(tim);
       addLog("✅ Timing-Analyse abgeschlossen");
@@ -2324,7 +2382,7 @@ Antworte NUR mit validem JSON:
           if (check()) return;
           setTimingStep("Timing-Bewertung…");
           addLog("Timing-Bewertung läuft…");
-          const tim = await doTimingAnalysis(stocks, fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, capexImpact, geo);
+          const tim = await doTimingAnalysis(stocks.filter(s => !isSold(s)), fmpData, lInsiderData, lMacro, lMarket, parseFloat(dcaExtra) || 0, parseInt(dcaMonths) || 12, eurUsdRate, capexImpact, geo);
           if (check()) return;
           setTiming(tim);
           addLog("✅ Timing-Analyse abgeschlossen");
@@ -2365,7 +2423,7 @@ Antworte NUR mit validem JSON:
   /* ═══ SELL PRIORITY UPDATE ═══ */
   const runSellPriority = useCallback(async () => {
     setBusySellPrio(true);
-    const prio = await doSellPriority(stocks, finnhubData, analysis, timing, insiderData, eurUsdRate);
+    const prio = await doSellPriority(stocks.filter(s => !isSold(s)), finnhubData, analysis, timing, insiderData, eurUsdRate);
     if (prio) {
       setSellPriority(prio);
       const now = new Date();
@@ -2380,14 +2438,16 @@ Antworte NUR mit validem JSON:
   }, [stocks, finnhubData, analysis, timing]);
 
   // Derived
-  const totalInvested = stocks.reduce((s, p) => s + p.cost, 0);
-  const hasPLData = stocks.some(pos => calcPL(pos, finnhubData[pos.ticker]?.price, eurUsdRate) !== null);
-  const totalValue = stocks.reduce((s, pos) => {
+  const activeStocks = stocks.filter(s => !isSold(s));
+  const soldStocks = stocks.filter(s => isSold(s));
+  const totalInvested = activeStocks.reduce((s, p) => s + p.cost, 0);
+  const hasPLData = activeStocks.some(pos => calcPL(pos, finnhubData[pos.ticker]?.price, eurUsdRate) !== null);
+  const totalValue = activeStocks.reduce((s, pos) => {
     const pl = calcPL(pos, finnhubData[pos.ticker]?.price, eurUsdRate);
     return s + (pl ? pl.currentValue : pos.cost);
   }, 0);
   const totalPL = totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0;
-  const incompleteStocks = stocks.filter(s => !s.pricePerShare || !s.purchaseDate);
+  const incompleteStocks = activeStocks.filter(s => !s.pricePerShare || !s.purchaseDate);
   const capexStocks = stocks.filter(s => s.type === "capex");
   const otherStocks = stocks.filter(s => s.type === "other");
   const bySell = sellPriority?.priority
@@ -2560,7 +2620,7 @@ Antworte NUR mit validem JSON:
       tab === "overview" && React.createElement(React.Fragment, null,
         React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10, marginBottom: 14 } },
           [
-            { l: hasPLData ? "Portfolio-Wert" : "Investiert", v: `€${(hasPLData ? totalValue : totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, s: hasPLData ? `${totalPL >= 0 ? "+" : ""}${totalPL.toFixed(1)}%` : `${stocks.length} Pos.`, c: hasPLData ? (totalPL >= 0 ? X.green : X.red) : "#e2e8f0", info: hasPLData, warn: incompleteStocks.length > 0 },
+            { l: hasPLData ? "Portfolio-Wert" : "Investiert", v: `€${(hasPLData ? totalValue : totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, s: hasPLData ? `${totalPL >= 0 ? "+" : ""}${totalPL.toFixed(1)}%` : `${activeStocks.length} Pos.`, c: hasPLData ? (totalPL >= 0 ? X.green : X.red) : "#e2e8f0", info: hasPLData, warn: incompleteStocks.length > 0 },
             { l: "CapEx-Trend", v: hasData ? (trMap[analysis.capexTrend] || "—") : "—", c: hasData ? (analysis.capexTrend === "accelerating" ? X.green : analysis.capexTrend === "stable" ? X.yellow : X.red) : "#64748b", s: hasData ? "Live" : "" },
             { l: "Status", v: hasData ? stMap[analysis.overallStatus] : "—", c: hasData ? X[analysis.overallStatus] : "#64748b", s: hasData ? (analysis.nextEvent || "").slice(0, 32) : "" },
           ].map((c, i) =>
@@ -2578,7 +2638,7 @@ Antworte NUR mit validem JSON:
                 React.createElement("div", null, `Investiert: €${totalInvested.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
                 React.createElement("div", { style: { marginTop: 3 } }, `Aktueller Wert: €${totalValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
                 React.createElement("div", { style: { marginTop: 3, color: totalPL >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: ${totalPL >= 0 ? "+" : ""}${totalPL.toFixed(1)}% (€${(totalValue - totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`),
-                React.createElement("div", { style: { marginTop: 3 } }, `${stocks.length} Positionen`),
+                React.createElement("div", { style: { marginTop: 3 } }, `${activeStocks.length} Positionen${soldStocks.length > 0 ? ` (+ ${soldStocks.length} verkauft)` : ""}`),
                 incompleteStocks.length > 0 && React.createElement("div", { style: { marginTop: 5, paddingTop: 5, borderTop: "1px solid #334155", color: X.orange } },
                   React.createElement("div", { style: { fontWeight: 600, marginBottom: 3 } }, `⚠ ${incompleteStocks.length} Aktien unvollständig:`),
                   incompleteStocks.map(s => React.createElement("div", { key: s.ticker, style: { marginTop: 2 } }, `${s.ticker}: ${[!s.pricePerShare && "Kaufpreis/Aktie", !s.purchaseDate && "Kaufdatum"].filter(Boolean).join(", ")} fehlt`))
@@ -2866,13 +2926,12 @@ Antworte NUR mit validem JSON:
         ),
 
         /* CapEx Stocks */
-        capexStocks.length > 0 && React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.purple, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".06em" } }, `CapEx-abhängig (${capexStocks.length})`),
-        [...capexStocks].sort((a, b) => a.sell - b.sell).map(pos => {
+        capexStocks.length > 0 && React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.purple, marginBottom: 6, textTransform: "uppercase", letterSpacing: ".06em" } }, `CapEx-abhängig (${capexStocks.filter(s => !isSold(s)).length}${capexStocks.some(s => isSold(s)) ? ` + ${capexStocks.filter(s => isSold(s)).length} verkauft` : ""})`),
+        [...capexStocks].sort((a, b) => (isSold(a) ? 1 : 0) - (isSold(b) ? 1 : 0) || a.sell - b.sell).map(pos => {
           const pr = positions[pos.ticker];
           const fhd = finnhubData[pos.ticker];
-          const pl = calcPL(pos, fhd?.price, eurUsdRate);
           const incomplete = !pos.pricePerShare || !pos.purchaseDate;
-          return React.createElement("div", { key: pos.ticker, style: { background: "#111827", borderRadius: 12, border: incomplete ? `2px solid ${X.orange}` : "1px solid #1e293b", padding: 13, marginBottom: 8 } },
+          return React.createElement("div", { key: pos.ticker, style: { background: "#111827", borderRadius: 12, border: isSold(pos) ? `1px solid #334155` : incomplete ? `2px solid ${X.orange}` : "1px solid #1e293b", padding: 13, marginBottom: 8, opacity: isSold(pos) ? 0.55 : 1 } },
             React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9, minWidth: 0, flex: 1 } },
                 React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.purple, flexShrink: 0 } }, pos.ticker),
@@ -2880,21 +2939,42 @@ Antworte NUR mit validem JSON:
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
                     React.createElement("span", { style: { fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, pos.name),
                     React.createElement(TypeBadge, { type: "capex" }),
-                    (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — ⓘ klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
+                    isSold(pos) && React.createElement("span", { style: { fontSize: 8, padding: "2px 6px", borderRadius: 8, background: `${X.red}22`, color: X.red, fontWeight: 700, letterSpacing: ".04em" } }, "VERKAUFT"),
+                    !isSold(pos) && (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — ⓘ klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
                   ),
                   React.createElement("div", { style: { fontSize: 10, color: "#64748b" } }, `${pos.sector} · Sensitivität: `, React.createElement("span", { style: { color: sensColor(pos.sensitivity) } }, pos.sensitivity), ` · Moat: ${moatLabel(pos.moat)}`)
                 )
               ),
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexShrink: 0 } },
                 React.createElement("div", { style: { textAlign: "right", position: "relative" } },
-                  React.createElement("div", { className: "m", style: { fontSize: 12, fontWeight: 600 } }, pl ? `€${pl.currentValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `€${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
-                  pl && React.createElement("div", { className: "m", style: { fontSize: 11, fontWeight: 600, color: pl.plPct >= 0 ? X.green : X.red } }, `${pl.plPct >= 0 ? "+" : ""}${pl.plPct.toFixed(1)}%`),
+                  (() => {
+                    const plNow = calcPL(pos, fhd?.price, eurUsdRate);
+                    return isSold(pos)
+                      ? React.createElement(React.Fragment, null,
+                          React.createElement("div", { className: "m", style: { fontSize: 12, fontWeight: 600, color: "#64748b" } }, `€${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+                        )
+                      : React.createElement(React.Fragment, null,
+                          React.createElement("div", { className: "m", style: { fontSize: 12, fontWeight: 600 } }, plNow ? `€${plNow.currentValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `€${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+                          plNow && React.createElement("div", { className: "m", style: { fontSize: 11, fontWeight: 600, color: plNow.plPct >= 0 ? X.green : X.red } }, `${plNow.plPct >= 0 ? "+" : ""}${plNow.plPct.toFixed(1)}%`)
+                        );
+                  })(),
+                  pos.sales?.length > 0 && !isSold(pos) && React.createElement("div", { style: { fontSize: 9, color: X.orange } }, `${pos.sales.reduce((s, sl) => s + sl.shares, 0).toFixed(1)} verkauft`),
                   pr && React.createElement(BDG, { s: pr.sentiment })
                 ),
                 React.createElement("button", { onClick: () => setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", color: "#64748b", fontSize: 12, flexShrink: 0 } }, "ⓘ"),
-                React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
+                !isSold(pos) && React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
+                React.createElement("button", { onClick: () => { setSellTicker(sellTicker === pos.ticker ? null : pos.ticker); setSellShares(""); setSellPrice(""); }, style: { background: `${X.orange}22`, border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' }, title: "Verkauf eintragen" }),
                 React.createElement("button", { onClick: () => setConfirmAction({ type: "removeStock", ticker: pos.ticker, name: pos.name }), style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
               )
+            ),
+            /* Sell form */
+            sellTicker === pos.ticker && React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, padding: "8px 0", borderTop: `1px solid ${X.orange}33` } },
+              React.createElement("span", { style: { fontSize: 11, color: X.orange, whiteSpace: "nowrap", fontWeight: 600 } }, "Verkauf"),
+              React.createElement("input", { value: sellShares, onChange: e => setSellShares(e.target.value), type: "number", placeholder: "Anzahl Aktien", autoFocus: true, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 100 } }),
+              React.createElement("input", { value: sellPrice, onChange: e => setSellPrice(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 110 } }),
+              React.createElement("input", { value: sellDate, onChange: e => setSellDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
+              React.createElement("button", { onClick: () => addSale(pos.ticker, sellShares, sellPrice, sellDate), style: { background: X.orange, border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+              React.createElement("button", { onClick: () => setSellTicker(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 11 } }, "Abbrechen")
             ),
             confirmAction?.type === "removeStock" && confirmAction.ticker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "12px 14px", marginTop: 6 } },
               React.createElement("div", { style: { fontSize: 12, color: "#e2e8f0", marginBottom: 10, lineHeight: 1.6 } }, `${pos.name} (${pos.ticker}) unwiderruflich löschen?`),
@@ -2904,8 +2984,26 @@ Antworte NUR mit validem JSON:
               )
             ),
             infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
-              pl && React.createElement("div", null, `Gesamt investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Ø €${pl.avgCost.toFixed(2)} · ${pl.totalShares.toFixed(2)} Anteile`),
-              pl && React.createElement("div", { style: { marginTop: 3, color: pl.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(pl.currentValue - pl.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${pl.plPct >= 0 ? "+" : ""}${pl.plPct.toFixed(1)}%)`),
+              (() => { const plI = calcPL(pos, fhd?.price, eurUsdRate); return React.createElement(React.Fragment, null,
+                plI && React.createElement("div", null, `Gesamt investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Ø €${plI.avgCost.toFixed(2)} · ${plI.boughtShares.toFixed(2)} gekauft${plI.soldShares > 0 ? ` · ${plI.soldShares.toFixed(2)} verkauft · ${plI.totalShares.toFixed(2)} verbleibend` : ` · ${plI.totalShares.toFixed(2)} Anteile`}`),
+                plI && !isSold(pos) && React.createElement("div", { style: { marginTop: 3, color: plI.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(plI.currentValue - plI.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${plI.plPct >= 0 ? "+" : ""}${plI.plPct.toFixed(1)}%)`),
+                !plI && React.createElement("div", null, `Gesamt investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+              ); })(),
+              /* Verkäufe */
+              pos.sales?.length > 0 && React.createElement("div", { style: { marginTop: 6, borderTop: "1px solid #334155", paddingTop: 6 } },
+                React.createElement("div", { style: { fontWeight: 600, marginBottom: 3, color: X.orange } }, `${pos.sales.length} Verkäufe:`),
+                pos.sales.map((sale, i) => React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 } },
+                  React.createElement("span", null, `${new Date(sale.date).toLocaleDateString("de-DE")}: ${sale.shares.toFixed(2)} Aktien à €${sale.pricePerShare?.toFixed(2) || "?"}${(() => { const plI2 = calcPL(pos, fhd?.price, eurUsdRate); return plI2 ? ` (Erlös: €${(sale.shares * sale.pricePerShare).toFixed(2)}, Gewinn: €${(sale.shares * (sale.pricePerShare - plI2.avgCost)).toFixed(2)})` : ""; })()}`),
+                  React.createElement("button", { onClick: () => setConfirmAction({ type: "removeSale", ticker: pos.ticker, index: i, date: new Date(sale.date).toLocaleDateString("de-DE") }), style: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 10 } }, "✕")
+                )),
+                pos.sales.map((sale, i) => confirmAction?.type === "removeSale" && confirmAction.ticker === pos.ticker && confirmAction.index === i && React.createElement("div", { key: `c${i}`, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", marginTop: 4 } },
+                  React.createElement("div", { style: { fontSize: 11, color: "#e2e8f0", marginBottom: 8 } }, `Verkauf vom ${confirmAction.date} rückgängig machen?`),
+                  React.createElement("div", { style: { display: "flex", gap: 6 } },
+                    React.createElement("button", { onClick: () => removeSale(pos.ticker, i), style: { flex: 1, padding: 6, borderRadius: 6, border: "none", cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "inherit", background: `${X.red}33`, color: X.red } }, "Entfernen"),
+                    React.createElement("button", { onClick: () => setConfirmAction(null), style: { flex: 1, padding: 6, borderRadius: 6, border: "1px solid #334155", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#94a3b8" } }, "Abbrechen")
+                  )
+                ))
+              ),
               /* Initialkauf */
               React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: "1px solid #334155" } },
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
@@ -2980,13 +3078,12 @@ Antworte NUR mit validem JSON:
 
         /* Other Stocks */
         otherStocks.length > 0 && React.createElement(React.Fragment, null,
-          React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.cyan, marginBottom: 6, marginTop: 14, textTransform: "uppercase", letterSpacing: ".06em" } }, `Andere Positionen (${otherStocks.length})`),
-          otherStocks.map(pos => {
+          React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.cyan, marginBottom: 6, marginTop: 14, textTransform: "uppercase", letterSpacing: ".06em" } }, `Andere Positionen (${otherStocks.filter(s => !isSold(s)).length}${otherStocks.some(s => isSold(s)) ? ` + ${otherStocks.filter(s => isSold(s)).length} verkauft` : ""})`),
+          [...otherStocks].sort((a, b) => (isSold(a) ? 1 : 0) - (isSold(b) ? 1 : 0)).map(pos => {
             const pr = positions[pos.ticker];
             const fhd = finnhubData[pos.ticker];
-            const pl = calcPL(pos, fhd?.price, eurUsdRate);
             const incomplete = !pos.pricePerShare || !pos.purchaseDate;
-            return React.createElement("div", { key: pos.ticker, style: { background: "#111827", borderRadius: 12, border: incomplete ? `2px solid ${X.orange}` : `1px solid ${X.cyan}22`, padding: 13, marginBottom: 8 } },
+            return React.createElement("div", { key: pos.ticker, style: { background: "#111827", borderRadius: 12, border: isSold(pos) ? `1px solid #334155` : incomplete ? `2px solid ${X.orange}` : `1px solid ${X.cyan}22`, padding: 13, marginBottom: 8, opacity: isSold(pos) ? 0.55 : 1 } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9, minWidth: 0, flex: 1 } },
                   React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: `${X.cyan}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.cyan, flexShrink: 0 } }, pos.ticker),
@@ -2994,21 +3091,42 @@ Antworte NUR mit validem JSON:
                     React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
                       React.createElement("span", { style: { fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, pos.name),
                       React.createElement(TypeBadge, { type: "other" }),
-                      (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — ⓘ klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
+                      isSold(pos) && React.createElement("span", { style: { fontSize: 8, padding: "2px 6px", borderRadius: 8, background: `${X.red}22`, color: X.red, fontWeight: 700, letterSpacing: ".04em" } }, "VERKAUFT"),
+                      !isSold(pos) && (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — ⓘ klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
                     ),
                     React.createElement("div", { style: { fontSize: 10, color: "#64748b" } }, `${pos.sector} · Moat: ${moatLabel(pos.moat)}`)
                   )
                 ),
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6, flexShrink: 0 } },
                   React.createElement("div", { style: { textAlign: "right", position: "relative" } },
-                    React.createElement("div", { className: "m", style: { fontSize: 12, fontWeight: 600 } }, pl ? `€${pl.currentValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `€${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
-                    pl && React.createElement("div", { className: "m", style: { fontSize: 11, fontWeight: 600, color: pl.plPct >= 0 ? X.green : X.red } }, `${pl.plPct >= 0 ? "+" : ""}${pl.plPct.toFixed(1)}%`),
+                    (() => {
+                      const plNow = calcPL(pos, fhd?.price, eurUsdRate);
+                      return isSold(pos)
+                        ? React.createElement(React.Fragment, null,
+                            React.createElement("div", { className: "m", style: { fontSize: 12, fontWeight: 600, color: "#64748b" } }, `€${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+                          )
+                        : React.createElement(React.Fragment, null,
+                            React.createElement("div", { className: "m", style: { fontSize: 12, fontWeight: 600 } }, plNow ? `€${plNow.currentValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : `€${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+                            plNow && React.createElement("div", { className: "m", style: { fontSize: 11, fontWeight: 600, color: plNow.plPct >= 0 ? X.green : X.red } }, `${plNow.plPct >= 0 ? "+" : ""}${plNow.plPct.toFixed(1)}%`)
+                          );
+                    })(),
+                    pos.sales?.length > 0 && !isSold(pos) && React.createElement("div", { style: { fontSize: 9, color: X.orange } }, `${pos.sales.reduce((s, sl) => s + sl.shares, 0).toFixed(1)} verkauft`),
                     pr && React.createElement(BDG, { s: pr.sentiment })
                   ),
                   React.createElement("button", { onClick: () => setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", color: "#64748b", fontSize: 12, flexShrink: 0 } }, "ⓘ"),
-                  React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
+                  !isSold(pos) && React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
+                  React.createElement("button", { onClick: () => { setSellTicker(sellTicker === pos.ticker ? null : pos.ticker); setSellShares(""); setSellPrice(""); }, style: { background: `${X.orange}22`, border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' }, title: "Verkauf eintragen" }),
                   React.createElement("button", { onClick: () => setConfirmAction({ type: "removeStock", ticker: pos.ticker, name: pos.name }), style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
                 )
+              ),
+              /* Sell form */
+              sellTicker === pos.ticker && React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, padding: "8px 0", borderTop: `1px solid ${X.orange}33` } },
+                React.createElement("span", { style: { fontSize: 11, color: X.orange, whiteSpace: "nowrap", fontWeight: 600 } }, "Verkauf"),
+                React.createElement("input", { value: sellShares, onChange: e => setSellShares(e.target.value), type: "number", placeholder: "Anzahl Aktien", autoFocus: true, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 100 } }),
+                React.createElement("input", { value: sellPrice, onChange: e => setSellPrice(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 110 } }),
+                React.createElement("input", { value: sellDate, onChange: e => setSellDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
+                React.createElement("button", { onClick: () => addSale(pos.ticker, sellShares, sellPrice, sellDate), style: { background: X.orange, border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+                React.createElement("button", { onClick: () => setSellTicker(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 11 } }, "Abbrechen")
               ),
               confirmAction?.type === "removeStock" && confirmAction.ticker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: "12px 14px", marginTop: 6 } },
                 React.createElement("div", { style: { fontSize: 12, color: "#e2e8f0", marginBottom: 10, lineHeight: 1.6 } }, `${pos.name} (${pos.ticker}) unwiderruflich löschen?`),
@@ -3018,8 +3136,26 @@ Antworte NUR mit validem JSON:
                 )
               ),
               infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
-                pl && React.createElement("div", null, `Gesamt investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Ø €${pl.avgCost.toFixed(2)} · ${pl.totalShares.toFixed(2)} Anteile`),
-                pl && React.createElement("div", { style: { marginTop: 3, color: pl.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(pl.currentValue - pl.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${pl.plPct >= 0 ? "+" : ""}${pl.plPct.toFixed(1)}%)`),
+                (() => { const plI = calcPL(pos, fhd?.price, eurUsdRate); return React.createElement(React.Fragment, null,
+                  plI && React.createElement("div", null, `Gesamt investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Ø €${plI.avgCost.toFixed(2)} · ${plI.boughtShares.toFixed(2)} gekauft${plI.soldShares > 0 ? ` · ${plI.soldShares.toFixed(2)} verkauft · ${plI.totalShares.toFixed(2)} verbleibend` : ` · ${plI.totalShares.toFixed(2)} Anteile`}`),
+                  plI && !isSold(pos) && React.createElement("div", { style: { marginTop: 3, color: plI.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(plI.currentValue - plI.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${plI.plPct >= 0 ? "+" : ""}${plI.plPct.toFixed(1)}%)`),
+                  !plI && React.createElement("div", null, `Gesamt investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+                ); })(),
+                /* Verkäufe */
+                pos.sales?.length > 0 && React.createElement("div", { style: { marginTop: 6, borderTop: "1px solid #334155", paddingTop: 6 } },
+                  React.createElement("div", { style: { fontWeight: 600, marginBottom: 3, color: X.orange } }, `${pos.sales.length} Verkäufe:`),
+                  pos.sales.map((sale, i) => React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 } },
+                    React.createElement("span", null, `${new Date(sale.date).toLocaleDateString("de-DE")}: ${sale.shares.toFixed(2)} Aktien à €${sale.pricePerShare?.toFixed(2) || "?"}${(() => { const plI2 = calcPL(pos, fhd?.price, eurUsdRate); return plI2 ? ` (Erlös: €${(sale.shares * sale.pricePerShare).toFixed(2)}, Gewinn: €${(sale.shares * (sale.pricePerShare - plI2.avgCost)).toFixed(2)})` : ""; })()}`),
+                    React.createElement("button", { onClick: () => setConfirmAction({ type: "removeSale", ticker: pos.ticker, index: i, date: new Date(sale.date).toLocaleDateString("de-DE") }), style: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 10 } }, "✕")
+                  )),
+                  pos.sales.map((sale, i) => confirmAction?.type === "removeSale" && confirmAction.ticker === pos.ticker && confirmAction.index === i && React.createElement("div", { key: `c${i}`, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8, padding: "8px 10px", marginTop: 4 } },
+                    React.createElement("div", { style: { fontSize: 11, color: "#e2e8f0", marginBottom: 8 } }, `Verkauf vom ${confirmAction.date} rückgängig machen?`),
+                    React.createElement("div", { style: { display: "flex", gap: 6 } },
+                      React.createElement("button", { onClick: () => removeSale(pos.ticker, i), style: { flex: 1, padding: 6, borderRadius: 6, border: "none", cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "inherit", background: `${X.red}33`, color: X.red } }, "Entfernen"),
+                      React.createElement("button", { onClick: () => setConfirmAction(null), style: { flex: 1, padding: 6, borderRadius: 6, border: "1px solid #334155", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#94a3b8" } }, "Abbrechen")
+                    )
+                  ))
+                ),
                 React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: "1px solid #334155" } },
                   React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
                     React.createElement("span", { style: { fontWeight: 600 } }, "Initialkauf"),
@@ -3384,7 +3520,7 @@ Antworte NUR mit validem JSON:
             if (!checkKeys()) return;
             setBusyDca(true);
             try {
-              const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate, capexImpact, geopolitik);
+              const plan = await doDCAPlan(stocks.filter(s => !isSold(s)), budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate, capexImpact, geopolitik);
               setDcaPlan(plan);
               persistAll({ dcaPlan: plan });
             } catch (e) {
@@ -3410,7 +3546,7 @@ Antworte NUR mit validem JSON:
               if (!checkKeys()) return;
               setBusyDca(true);
               try {
-                const plan = await doDCAPlan(stocks, budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate, capexImpact, geopolitik);
+                const plan = await doDCAPlan(stocks.filter(s => !isSold(s)), budget, mo, extra, finnhubData, insiderData, timing, analysis, macro, marketIndicators, eurUsdRate, capexImpact, geopolitik);
                 setDcaPlan(plan);
                 setDcaIncorporatesCapex(true);
               } catch (e) { console.error("DCA rebalance error:", e); }
