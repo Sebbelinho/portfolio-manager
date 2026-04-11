@@ -2440,12 +2440,14 @@ Antworte NUR mit validem JSON:
   // Derived
   const activeStocks = stocks.filter(s => !isSold(s));
   const soldStocks = stocks.filter(s => isSold(s));
-  const totalInvested = activeStocks.reduce((s, p) => s + p.cost, 0);
   const hasPLData = activeStocks.some(pos => calcPL(pos, finnhubData[pos.ticker]?.price, eurUsdRate) !== null);
-  const totalValue = activeStocks.reduce((s, pos) => {
+  const { totalInvested, totalValue } = activeStocks.reduce((acc, pos) => {
     const pl = calcPL(pos, finnhubData[pos.ticker]?.price, eurUsdRate);
-    return s + (pl ? pl.currentValue : pos.cost);
-  }, 0);
+    return {
+      totalInvested: acc.totalInvested + (pl ? pl.totalInvested : pos.cost),
+      totalValue: acc.totalValue + (pl ? pl.currentValue : pos.cost),
+    };
+  }, { totalInvested: 0, totalValue: 0 });
   const totalPL = totalInvested > 0 ? ((totalValue - totalInvested) / totalInvested) * 100 : 0;
   const incompleteStocks = activeStocks.filter(s => !s.pricePerShare || !s.purchaseDate);
   const capexStocks = stocks.filter(s => s.type === "capex");
