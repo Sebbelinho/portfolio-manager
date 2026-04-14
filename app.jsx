@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "11.04.2026, 20:48 Uhr";
+const BUILD_TIMESTAMP = "14.04.2026, 13:53 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -1814,10 +1814,14 @@ function App() {
   const [addSens, setAddSens] = useState("low");
   const [addMoat, setAddMoat] = useState("medium");
   const [addPricePerShare, setAddPricePerShare] = useState("");
+  const [addShares, setAddShares] = useState("");
+  const [addMode, setAddMode] = useState("amount");
   const [addDate, setAddDate] = useState(new Date().toISOString().slice(0, 10));
   const [filling, setFilling] = useState(false);
   const [nachkaufTicker, setNachkaufTicker] = useState(null);
   const [nachkaufBetrag, setNachkaufBetrag] = useState("");
+  const [nachkaufShares, setNachkaufShares] = useState("");
+  const [nachkaufMode, setNachkaufMode] = useState("amount");
   const [nachkaufPPS, setNachkaufPPS] = useState("");
   const [nachkaufDate, setNachkaufDate] = useState(new Date().toISOString().slice(0, 10));
   const [infoTicker, setInfoTicker] = useState(null);
@@ -1887,9 +1891,12 @@ function App() {
   const addStock = useCallback(() => {
     if (!addTicker.trim() || !addName.trim()) return;
     const pps = parseFloat(addPricePerShare) || 0;
+    const cost = addMode === "shares"
+      ? (parseFloat(addShares) || 0) * pps
+      : (parseFloat(addCost) || 0);
     const newStock = {
       ticker: addTicker.toUpperCase().trim(), name: addName.trim(),
-      cost: parseFloat(addCost) || 0, pricePerShare: pps, purchaseDate: addDate,
+      cost, pricePerShare: pps, purchaseDate: addDate,
       sector: addSector.trim() || "Sonstige",
       sensitivity: addSens, moat: addMoat, sell: stocks.length + 1, type: addType,
     };
@@ -1898,9 +1905,9 @@ function App() {
       saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
       return updated;
     });
-    setAddTicker(""); setAddName(""); setAddSector(""); setAddCost(""); setAddPricePerShare(""); setAddDate(new Date().toISOString().slice(0, 10)); setAddType("other"); setAddSens("low"); setAddMoat("medium");
+    setAddTicker(""); setAddName(""); setAddSector(""); setAddCost(""); setAddShares(""); setAddMode("amount"); setAddPricePerShare(""); setAddDate(new Date().toISOString().slice(0, 10)); setAddType("other"); setAddSens("low"); setAddMoat("medium");
     setShowAdd(false);
-  }, [addTicker, addName, addSector, addCost, addPricePerShare, addDate, addType, addSens, addMoat, stocks.length, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, lastRun, logs]);
+  }, [addTicker, addName, addSector, addCost, addShares, addMode, addPricePerShare, addDate, addType, addSens, addMoat, stocks.length, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, lastRun, logs]);
 
   const removeStock = useCallback((ticker) => {
     setStocks(prev => {
@@ -1922,10 +1929,13 @@ function App() {
     });
   }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
 
-  const addNachkauf = useCallback((ticker, betrag, pps, date) => {
-    const amount = parseFloat(betrag);
+  const addNachkauf = useCallback((ticker, betrag, pps, date, shares, mode) => {
     const pricePS = parseFloat(pps);
-    if (!amount || amount <= 0 || !pricePS || pricePS <= 0) return;
+    if (!pricePS || pricePS <= 0) return;
+    const amount = mode === "shares"
+      ? (parseFloat(shares) || 0) * pricePS
+      : parseFloat(betrag);
+    if (!amount || amount <= 0) return;
     setStocks(prev => {
       const updated = prev.map(s => s.ticker === ticker ? { ...s, cost: s.cost + amount, purchases: [...(s.purchases || []), { amount, pricePerShare: pricePS, date: date || new Date().toISOString().slice(0, 10) }] } : s);
       saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
@@ -1933,6 +1943,8 @@ function App() {
     });
     setNachkaufTicker(null);
     setNachkaufBetrag("");
+    setNachkaufShares("");
+    setNachkaufMode("amount");
     setNachkaufPPS("");
     setNachkaufDate(new Date().toISOString().slice(0, 10));
   }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
@@ -2881,8 +2893,14 @@ Antworte NUR mit validem JSON:
               React.createElement("input", { value: addSector, onChange: e => setAddSector(e.target.value), placeholder: "z.B. Pharma", style: inp })
             ),
             React.createElement("div", null,
-              React.createElement("div", { style: { fontSize: 10, color: "#64748b", marginBottom: 3 } }, "Investiert (€)"),
-              React.createElement("input", { value: addCost, onChange: e => setAddCost(e.target.value), placeholder: "0", type: "number", style: inp })
+              React.createElement("div", { style: { fontSize: 10, marginBottom: 3, display: "flex", gap: 6 } },
+                React.createElement("span", { onClick: () => setAddMode("amount"), style: { cursor: "pointer", color: addMode === "amount" ? X.purple : "#64748b", fontWeight: addMode === "amount" ? 700 : 400 } }, "Investiert (€)"),
+                React.createElement("span", { style: { color: "#334155" } }, "|"),
+                React.createElement("span", { onClick: () => setAddMode("shares"), style: { cursor: "pointer", color: addMode === "shares" ? X.purple : "#64748b", fontWeight: addMode === "shares" ? 700 : 400 } }, "Anzahl Aktien")
+              ),
+              addMode === "amount"
+                ? React.createElement("input", { value: addCost, onChange: e => setAddCost(e.target.value), placeholder: "0", type: "number", style: inp })
+                : React.createElement("input", { value: addShares, onChange: e => setAddShares(e.target.value), placeholder: "0", type: "number", style: inp })
             ),
             React.createElement("div", null,
               React.createElement("div", { style: { fontSize: 10, color: "#64748b", marginBottom: 3 } }, "Kaufpreis/Aktie (€)"),
@@ -3068,10 +3086,17 @@ Antworte NUR mit validem JSON:
             ),
             nachkaufTicker === pos.ticker && React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, padding: "8px 0", borderTop: "1px solid #1e293b" } },
               React.createElement("span", { style: { fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap" } }, "Nachkauf"),
-              React.createElement("input", { value: nachkaufBetrag, onChange: e => setNachkaufBetrag(e.target.value), type: "number", placeholder: "Betrag €", autoFocus: true, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
+              React.createElement("span", { style: { display: "flex", gap: 4, fontSize: 10 } },
+                React.createElement("span", { onClick: () => setNachkaufMode("amount"), style: { cursor: "pointer", color: nachkaufMode === "amount" ? X.purple : "#64748b", fontWeight: nachkaufMode === "amount" ? 700 : 400 } }, "€"),
+                React.createElement("span", { style: { color: "#334155" } }, "|"),
+                React.createElement("span", { onClick: () => setNachkaufMode("shares"), style: { cursor: "pointer", color: nachkaufMode === "shares" ? X.purple : "#64748b", fontWeight: nachkaufMode === "shares" ? 700 : 400 } }, "#")
+              ),
+              nachkaufMode === "amount"
+                ? React.createElement("input", { value: nachkaufBetrag, onChange: e => setNachkaufBetrag(e.target.value), type: "number", placeholder: "Betrag €", autoFocus: true, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } })
+                : React.createElement("input", { value: nachkaufShares, onChange: e => setNachkaufShares(e.target.value), type: "number", placeholder: "Anzahl Aktien", autoFocus: true, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 100 } }),
               React.createElement("input", { value: nachkaufPPS, onChange: e => setNachkaufPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 110 } }),
               React.createElement("input", { value: nachkaufDate, onChange: e => setNachkaufDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
-              React.createElement("button", { onClick: () => addNachkauf(pos.ticker, nachkaufBetrag, nachkaufPPS, nachkaufDate), style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+              React.createElement("button", { onClick: () => addNachkauf(pos.ticker, nachkaufBetrag, nachkaufPPS, nachkaufDate, nachkaufShares, nachkaufMode), style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
               React.createElement("button", { onClick: () => setNachkaufTicker(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 11 } }, "Abbrechen")
             ),
             pr && React.createElement("div", { style: { fontSize: 11, color: "#94a3b8", lineHeight: 1.6, marginTop: 9, paddingTop: 9, borderTop: "1px solid #1e293b" } }, pr.summary)
@@ -3218,10 +3243,17 @@ Antworte NUR mit validem JSON:
               ),
               nachkaufTicker === pos.ticker && React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, padding: "8px 0", borderTop: "1px solid #1e293b" } },
                 React.createElement("span", { style: { fontSize: 11, color: "#94a3b8", whiteSpace: "nowrap" } }, "Nachkauf"),
-                React.createElement("input", { value: nachkaufBetrag, onChange: e => setNachkaufBetrag(e.target.value), type: "number", placeholder: "Betrag €", autoFocus: true, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
+                React.createElement("span", { style: { display: "flex", gap: 4, fontSize: 10 } },
+                  React.createElement("span", { onClick: () => setNachkaufMode("amount"), style: { cursor: "pointer", color: nachkaufMode === "amount" ? X.purple : "#64748b", fontWeight: nachkaufMode === "amount" ? 700 : 400 } }, "€"),
+                  React.createElement("span", { style: { color: "#334155" } }, "|"),
+                  React.createElement("span", { onClick: () => setNachkaufMode("shares"), style: { cursor: "pointer", color: nachkaufMode === "shares" ? X.purple : "#64748b", fontWeight: nachkaufMode === "shares" ? 700 : 400 } }, "#")
+                ),
+                nachkaufMode === "amount"
+                  ? React.createElement("input", { value: nachkaufBetrag, onChange: e => setNachkaufBetrag(e.target.value), type: "number", placeholder: "Betrag €", autoFocus: true, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } })
+                  : React.createElement("input", { value: nachkaufShares, onChange: e => setNachkaufShares(e.target.value), type: "number", placeholder: "Anzahl Aktien", autoFocus: true, style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 100 } }),
                 React.createElement("input", { value: nachkaufPPS, onChange: e => setNachkaufPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 110 } }),
                 React.createElement("input", { value: nachkaufDate, onChange: e => setNachkaufDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "5px 8px", fontSize: 12, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
-                React.createElement("button", { onClick: () => addNachkauf(pos.ticker, nachkaufBetrag, nachkaufPPS, nachkaufDate), style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+                React.createElement("button", { onClick: () => addNachkauf(pos.ticker, nachkaufBetrag, nachkaufPPS, nachkaufDate, nachkaufShares, nachkaufMode), style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "5px 12px", fontSize: 11, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
                 React.createElement("button", { onClick: () => setNachkaufTicker(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 11 } }, "Abbrechen")
               ),
               pr && React.createElement("div", { style: { fontSize: 11, color: "#94a3b8", lineHeight: 1.6, marginTop: 9, paddingTop: 9, borderTop: "1px solid #1e293b" } }, pr.summary)
