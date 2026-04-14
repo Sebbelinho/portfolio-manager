@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.04.2026, 13:53 Uhr";
+const BUILD_TIMESTAMP = "14.04.2026, 14:11 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -1792,8 +1792,9 @@ function App() {
       if (saved.geopolitik) setGeopolitik(saved.geopolitik);
     }
     setDataLoaded(true);
-    // Earnings-Kalender + EUR/USD-Kurs laden
+    // Earnings-Kalender + EUR/USD-Kurs + Macro-Refresh (nur kostenlose APIs)
     const fhKey = getFmpKey();
+    const fredKey = getFredKey();
     const portfolioTickers = (saved?.stocks || []).map(s => s.ticker);
     if (fhKey) {
       if (portfolioTickers.length > 0) {
@@ -1801,6 +1802,10 @@ function App() {
         fetchStockData(portfolioTickers).then(data => { if (data && Object.keys(data).length > 0) setFinnhubData(prev => ({ ...prev, ...data })); }).catch(() => {});
       }
       fetchEurUsdRate().then(rate => { if (rate) setEurUsdRate(rate); }).catch(() => {});
+      fetchMarketIndicators().then(mi => { if (mi) setMarketIndicators(mi); }).catch(() => {});
+    }
+    if (fredKey) {
+      fetchFredData().then(md => { if (md) setMacro(md); }).catch(() => {});
     }
   }, []);
 
@@ -1815,13 +1820,13 @@ function App() {
   const [addMoat, setAddMoat] = useState("medium");
   const [addPricePerShare, setAddPricePerShare] = useState("");
   const [addShares, setAddShares] = useState("");
-  const [addMode, setAddMode] = useState("amount");
+  const [addMode, setAddMode] = useState("shares");
   const [addDate, setAddDate] = useState(new Date().toISOString().slice(0, 10));
   const [filling, setFilling] = useState(false);
   const [nachkaufTicker, setNachkaufTicker] = useState(null);
   const [nachkaufBetrag, setNachkaufBetrag] = useState("");
   const [nachkaufShares, setNachkaufShares] = useState("");
-  const [nachkaufMode, setNachkaufMode] = useState("amount");
+  const [nachkaufMode, setNachkaufMode] = useState("shares");
   const [nachkaufPPS, setNachkaufPPS] = useState("");
   const [nachkaufDate, setNachkaufDate] = useState(new Date().toISOString().slice(0, 10));
   const [infoTicker, setInfoTicker] = useState(null);
@@ -1905,7 +1910,7 @@ function App() {
       saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
       return updated;
     });
-    setAddTicker(""); setAddName(""); setAddSector(""); setAddCost(""); setAddShares(""); setAddMode("amount"); setAddPricePerShare(""); setAddDate(new Date().toISOString().slice(0, 10)); setAddType("other"); setAddSens("low"); setAddMoat("medium");
+    setAddTicker(""); setAddName(""); setAddSector(""); setAddCost(""); setAddShares(""); setAddMode("shares"); setAddPricePerShare(""); setAddDate(new Date().toISOString().slice(0, 10)); setAddType("other"); setAddSens("low"); setAddMoat("medium");
     setShowAdd(false);
   }, [addTicker, addName, addSector, addCost, addShares, addMode, addPricePerShare, addDate, addType, addSens, addMoat, stocks.length, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, lastRun, logs]);
 
@@ -1944,7 +1949,7 @@ function App() {
     setNachkaufTicker(null);
     setNachkaufBetrag("");
     setNachkaufShares("");
-    setNachkaufMode("amount");
+    setNachkaufMode("shares");
     setNachkaufPPS("");
     setNachkaufDate(new Date().toISOString().slice(0, 10));
   }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
@@ -2053,14 +2058,16 @@ function App() {
         if (check()) return;
         advance("Fundamentaldaten (Finnhub)");
         addLog("→ Fundamentaldaten + Insider laden (Finnhub)…");
-        const [stockDataResult, insiderResult] = await Promise.all([
+        const [stockDataResult, insiderResult, fxResult] = await Promise.all([
           fetchStockData(stocks.map(s => s.ticker)),
           fetchInsiderData(stocks.map(s => s.ticker)),
+          fetchEurUsdRate(),
         ]);
         fmpData = stockDataResult;
         lInsiderData = insiderResult;
         setFinnhubData(fmpData);
         setInsiderData(lInsiderData);
+        if (fxResult) { setEurUsdRate(fxResult); addLog(`  ✓ EUR/USD: ${fxResult.toFixed(4)}`); }
         const count = Object.keys(fmpData).length;
         addLog(`  ✓ ${count}/${stocks.length} Aktien geladen`);
         for (const [t, d] of Object.entries(fmpData)) {
@@ -2279,17 +2286,19 @@ Antworte NUR mit validem JSON:
       if (getFmpKey()) {
         setTimingStep("Fundamentaldaten + Insider + Makro…");
         addLog("Lade Fundamentaldaten, Insider, Makro…");
-        const [stockDataResult, insiderResult, fredResult, marketResult] = await Promise.all([
+        const [stockDataResult, insiderResult, fredResult, marketResult, fxResult] = await Promise.all([
           fetchStockData(stocks.map(s => s.ticker)),
           fetchInsiderData(stocks.map(s => s.ticker)),
           getFredKey() ? fetchFredData() : Promise.resolve(null),
           fetchMarketIndicators(),
+          fetchEurUsdRate(),
         ]);
         if (check()) return;
         fmpData = stockDataResult;
         lInsiderData = insiderResult;
         lMacro = fredResult;
         lMarket = marketResult;
+        if (fxResult) { setEurUsdRate(fxResult); addLog(`EUR/USD: ${fxResult.toFixed(4)}`); }
         addLog(`Fundamentaldaten für ${Object.keys(fmpData).length} Ticker geladen`);
         // 52wH verifizieren
         setTimingStep("52-Wochen-Hochs verifizieren…");
@@ -2370,17 +2379,19 @@ Antworte NUR mit validem JSON:
             if (Object.keys(fmpData).length === 0) {
               setTimingStep("Fundamentaldaten + Insider + Makro…");
               addLog("Lade Fundamentaldaten, Insider, Makro…");
-              const [stockDataResult, insiderResult, fredResult, marketResult] = await Promise.all([
+              const [stockDataResult, insiderResult, fredResult, marketResult, fxResult] = await Promise.all([
                 fetchStockData(stocks.map(s => s.ticker)),
                 fetchInsiderData(stocks.map(s => s.ticker)),
                 getFredKey() ? fetchFredData() : Promise.resolve(null),
                 fetchMarketIndicators(),
+                fetchEurUsdRate(),
               ]);
               if (check()) return;
               fmpData = stockDataResult;
               lInsiderData = insiderResult;
               lMacro = fredResult;
               lMarket = marketResult;
+              if (fxResult) { setEurUsdRate(fxResult); addLog(`EUR/USD: ${fxResult.toFixed(4)}`); }
               addLog(`Fundamentaldaten für ${Object.keys(fmpData).length} Ticker geladen`);
               setInsiderData(lInsiderData);
               if (lMacro) setMacro(lMacro);
@@ -2653,6 +2664,7 @@ Antworte NUR mit validem JSON:
                 React.createElement("div", { style: { marginTop: 3 } }, `Aktueller Wert: €${totalValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
                 React.createElement("div", { style: { marginTop: 3, color: totalPL >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: ${totalPL >= 0 ? "+" : ""}${totalPL.toFixed(1)}% (€${(totalValue - totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`),
                 React.createElement("div", { style: { marginTop: 3 } }, `${activeStocks.length} Positionen${soldStocks.length > 0 ? ` (+ ${soldStocks.length} verkauft)` : ""}`),
+                React.createElement("div", { style: { marginTop: 3 } }, `USD/EUR: ${eurUsdRate ? `${eurUsdRate.toFixed(4)} (1$ = €${eurUsdRate.toFixed(4)})` : "—"}`),
                 incompleteStocks.length > 0 && React.createElement("div", { style: { marginTop: 5, paddingTop: 5, borderTop: "1px solid #334155", color: X.orange } },
                   React.createElement("div", { style: { fontWeight: 600, marginBottom: 3 } }, `⚠ ${incompleteStocks.length} Aktien unvollständig:`),
                   incompleteStocks.map(s => React.createElement("div", { key: s.ticker, style: { marginTop: 2 } }, `${s.ticker}: ${[!s.pricePerShare && "Kaufpreis/Aktie", !s.purchaseDate && "Kaufdatum"].filter(Boolean).join(", ")} fehlt`))
