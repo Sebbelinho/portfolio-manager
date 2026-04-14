@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.04.2026, 14:44 Uhr";
+const BUILD_TIMESTAMP = "14.04.2026, 15:14 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -1834,9 +1834,13 @@ function App() {
   const [editPPS, setEditPPS] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editCost, setEditCost] = useState("");
+  const [editShares, setEditShares] = useState("");
+  const [editInitialMode, setEditInitialMode] = useState("amount");
   const [editingInitial, setEditingInitial] = useState(null);
   const [editingNachkauf, setEditingNachkauf] = useState(null);
   const [editNkAmount, setEditNkAmount] = useState("");
+  const [editNkShares, setEditNkShares] = useState("");
+  const [editNkMode, setEditNkMode] = useState("amount");
   const [editNkPPS, setEditNkPPS] = useState("");
   const [editNkDate, setEditNkDate] = useState("");
   const [sellTicker, setSellTicker] = useState(null);
@@ -1901,7 +1905,7 @@ function App() {
       : (parseFloat(addCost) || 0);
     const newStock = {
       ticker: addTicker.toUpperCase().trim(), name: addName.trim(),
-      cost, pricePerShare: pps, purchaseDate: addDate,
+      cost, pricePerShare: pps, purchaseDate: addDate, inputMode: addMode,
       sector: addSector.trim() || "Sonstige",
       sensitivity: addSens, moat: addMoat, sell: stocks.length + 1, type: addType,
     };
@@ -1942,7 +1946,7 @@ function App() {
       : parseFloat(betrag);
     if (!amount || amount <= 0) return;
     setStocks(prev => {
-      const updated = prev.map(s => s.ticker === ticker ? { ...s, cost: s.cost + amount, purchases: [...(s.purchases || []), { amount, pricePerShare: pricePS, date: date || new Date().toISOString().slice(0, 10) }] } : s);
+      const updated = prev.map(s => s.ticker === ticker ? { ...s, cost: s.cost + amount, purchases: [...(s.purchases || []), { amount, pricePerShare: pricePS, date: date || new Date().toISOString().slice(0, 10), inputMode: mode || "amount" }] } : s);
       saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra });
       return updated;
     });
@@ -3041,24 +3045,33 @@ Antworte NUR mit validem JSON:
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
                   React.createElement("span", { style: { fontWeight: 600 } }, "Initialkauf"),
                   editingInitial !== pos.ticker
-                    ? React.createElement("button", { onClick: () => { setEditingInitial(pos.ticker); setEditCost(String(pos.cost - (pos.purchases || []).reduce((s, p) => s + p.amount, 0))); setEditPPS(String(pos.pricePerShare || "")); setEditDate(pos.purchaseDate || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10, fontWeight: 600 } }, "Bearbeiten")
+                    ? React.createElement("button", { onClick: () => { const initC = pos.cost - (pos.purchases || []).reduce((s, p) => s + p.amount, 0); const initS = pos.pricePerShare > 0 ? initC / pos.pricePerShare : 0; setEditingInitial(pos.ticker); setEditInitialMode(pos.inputMode || "amount"); setEditCost(String(initC)); setEditShares(initS ? initS.toFixed(4) : ""); setEditPPS(String(pos.pricePerShare || "")); setEditDate(pos.purchaseDate || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10, fontWeight: 600 } }, "Bearbeiten")
                     : null
                 ),
                 editingInitial === pos.ticker
                   ? React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 4 } },
-                      React.createElement("input", { value: editCost, onChange: e => setEditCost(e.target.value), type: "number", placeholder: "Invest €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
+                      React.createElement("span", { style: { display: "flex", gap: 4, fontSize: 10 } },
+                        React.createElement("span", { onClick: () => { if (editInitialMode !== "amount") { const pps = parseFloat(editPPS) || 0; if (editShares && pps) setEditCost((parseFloat(editShares) * pps).toFixed(2)); setEditInitialMode("amount"); } }, style: { cursor: "pointer", color: editInitialMode === "amount" ? X.purple : "#64748b", fontWeight: editInitialMode === "amount" ? 700 : 400 } }, "€"),
+                        React.createElement("span", { style: { color: "#334155" } }, "|"),
+                        React.createElement("span", { onClick: () => { if (editInitialMode !== "shares") { const pps = parseFloat(editPPS) || 0; if (editCost && pps) setEditShares((parseFloat(editCost) / pps).toFixed(4)); setEditInitialMode("shares"); } }, style: { cursor: "pointer", color: editInitialMode === "shares" ? X.purple : "#64748b", fontWeight: editInitialMode === "shares" ? 700 : 400 } }, "#")
+                      ),
+                      editInitialMode === "amount"
+                        ? React.createElement("input", { value: editCost, onChange: e => setEditCost(e.target.value), type: "number", placeholder: "Invest €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } })
+                        : React.createElement("input", { value: editShares, onChange: e => setEditShares(e.target.value), type: "number", placeholder: "Anzahl", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
                       React.createElement("input", { value: editPPS, onChange: e => setEditPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 100 } }),
                       React.createElement("input", { value: editDate, onChange: e => setEditDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
                       React.createElement("button", { onClick: () => {
                         const nachkaufSum = (pos.purchases || []).reduce((s, p) => s + p.amount, 0);
-                        const upd = {};
-                        if (editCost) upd.cost = parseFloat(editCost) + nachkaufSum;
+                        const pps = editPPS ? parseFloat(editPPS) : pos.pricePerShare;
+                        const initC = editInitialMode === "shares" ? (parseFloat(editShares) || 0) * (pps || 0) : parseFloat(editCost) || 0;
+                        const upd = { inputMode: editInitialMode };
+                        if (initC) upd.cost = initC + nachkaufSum;
                         if (editPPS) upd.pricePerShare = parseFloat(editPPS);
                         if (editDate) upd.purchaseDate = editDate;
-                        if (Object.keys(upd).length > 0) updateStock(pos.ticker, upd);
-                        setEditingInitial(null); setEditCost(""); setEditPPS(""); setEditDate("");
+                        updateStock(pos.ticker, upd);
+                        setEditingInitial(null); setEditCost(""); setEditShares(""); setEditPPS(""); setEditDate("");
                       }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
-                      React.createElement("button", { onClick: () => { setEditingInitial(null); setEditCost(""); setEditPPS(""); setEditDate(""); }, style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10 } }, "Abbrechen")
+                      React.createElement("button", { onClick: () => { setEditingInitial(null); setEditCost(""); setEditShares(""); setEditPPS(""); setEditDate(""); }, style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10 } }, "Abbrechen")
                     )
                   : React.createElement("div", { style: { marginTop: 2 } },
                       `${pos.purchaseDate ? new Date(pos.purchaseDate).toLocaleDateString("de-DE") : "?"}: €${((pos.cost || 0) - (pos.purchases || []).reduce((s, p) => s + p.amount, 0)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${pos.pricePerShare?.toFixed(2) || "?"}`,
@@ -3071,17 +3084,24 @@ Antworte NUR mit validem JSON:
                 pos.purchases.map((p, i) =>
                   editingNachkauf === `${pos.ticker}-${i}`
                     ? React.createElement("div", { key: i, style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 3 } },
-                        React.createElement("input", { value: editNkAmount, onChange: e => setEditNkAmount(e.target.value), type: "number", placeholder: "Betrag €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
+                        React.createElement("span", { style: { display: "flex", gap: 4, fontSize: 10 } },
+                          React.createElement("span", { onClick: () => { if (editNkMode !== "amount") { const pps = parseFloat(editNkPPS) || 0; if (editNkShares && pps) setEditNkAmount((parseFloat(editNkShares) * pps).toFixed(2)); setEditNkMode("amount"); } }, style: { cursor: "pointer", color: editNkMode === "amount" ? X.purple : "#64748b", fontWeight: editNkMode === "amount" ? 700 : 400 } }, "€"),
+                          React.createElement("span", { style: { color: "#334155" } }, "|"),
+                          React.createElement("span", { onClick: () => { if (editNkMode !== "shares") { const pps = parseFloat(editNkPPS) || 0; if (editNkAmount && pps) setEditNkShares((parseFloat(editNkAmount) / pps).toFixed(4)); setEditNkMode("shares"); } }, style: { cursor: "pointer", color: editNkMode === "shares" ? X.purple : "#64748b", fontWeight: editNkMode === "shares" ? 700 : 400 } }, "#")
+                        ),
+                        editNkMode === "amount"
+                          ? React.createElement("input", { value: editNkAmount, onChange: e => setEditNkAmount(e.target.value), type: "number", placeholder: "Betrag €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } })
+                          : React.createElement("input", { value: editNkShares, onChange: e => setEditNkShares(e.target.value), type: "number", placeholder: "Anzahl", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
                         React.createElement("input", { value: editNkPPS, onChange: e => setEditNkPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 100 } }),
                         React.createElement("input", { value: editNkDate, onChange: e => setEditNkDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
-                        React.createElement("button", { onClick: () => { const upd = {}; if (editNkAmount) upd.amount = parseFloat(editNkAmount); if (editNkPPS) upd.pricePerShare = parseFloat(editNkPPS); if (editNkDate) upd.date = editNkDate; updateNachkauf(pos.ticker, i, upd); }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+                        React.createElement("button", { onClick: () => { const pps = editNkPPS ? parseFloat(editNkPPS) : p.pricePerShare; const upd = { inputMode: editNkMode }; if (editNkMode === "shares") { if (editNkShares) upd.amount = (parseFloat(editNkShares) || 0) * (pps || 0); } else { if (editNkAmount) upd.amount = parseFloat(editNkAmount); } if (editNkPPS) upd.pricePerShare = parseFloat(editNkPPS); if (editNkDate) upd.date = editNkDate; updateNachkauf(pos.ticker, i, upd); }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
                         React.createElement("button", { onClick: () => setEditingNachkauf(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10 } }, "Abb.")
                       )
                     : React.createElement(React.Fragment, { key: i },
                         React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 } },
                           React.createElement("span", null, `${new Date(p.date).toLocaleDateString("de-DE")}: €${p.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${p.pricePerShare?.toFixed(2) || "?"}`),
                           React.createElement("span", { style: { display: "flex", gap: 4, flexShrink: 0 } },
-                            React.createElement("button", { onClick: () => { setEditingNachkauf(`${pos.ticker}-${i}`); setEditNkAmount(String(p.amount)); setEditNkPPS(String(p.pricePerShare || "")); setEditNkDate(p.date || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10 } }, "✎"),
+                            React.createElement("button", { onClick: () => { const nkS = p.pricePerShare > 0 ? p.amount / p.pricePerShare : 0; setEditingNachkauf(`${pos.ticker}-${i}`); setEditNkMode(p.inputMode || "amount"); setEditNkAmount(String(p.amount)); setEditNkShares(nkS ? nkS.toFixed(4) : ""); setEditNkPPS(String(p.pricePerShare || "")); setEditNkDate(p.date || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10 } }, "✎"),
                             React.createElement("button", { onClick: () => setConfirmAction({ type: "removeNachkauf", ticker: pos.ticker, index: i, date: new Date(p.date).toLocaleDateString("de-DE") }), style: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 10 } }, "✕")
                           )
                         ),
@@ -3199,24 +3219,33 @@ Antworte NUR mit validem JSON:
                   React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
                     React.createElement("span", { style: { fontWeight: 600 } }, "Initialkauf"),
                     editingInitial !== pos.ticker
-                      ? React.createElement("button", { onClick: () => { setEditingInitial(pos.ticker); setEditCost(String(pos.cost - (pos.purchases || []).reduce((s, p) => s + p.amount, 0))); setEditPPS(String(pos.pricePerShare || "")); setEditDate(pos.purchaseDate || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10, fontWeight: 600 } }, "Bearbeiten")
+                      ? React.createElement("button", { onClick: () => { const initC = pos.cost - (pos.purchases || []).reduce((s, p) => s + p.amount, 0); const initS = pos.pricePerShare > 0 ? initC / pos.pricePerShare : 0; setEditingInitial(pos.ticker); setEditInitialMode(pos.inputMode || "amount"); setEditCost(String(initC)); setEditShares(initS ? initS.toFixed(4) : ""); setEditPPS(String(pos.pricePerShare || "")); setEditDate(pos.purchaseDate || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10, fontWeight: 600 } }, "Bearbeiten")
                       : null
                   ),
                   editingInitial === pos.ticker
                     ? React.createElement("div", { style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 4 } },
-                        React.createElement("input", { value: editCost, onChange: e => setEditCost(e.target.value), type: "number", placeholder: "Invest €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
+                        React.createElement("span", { style: { display: "flex", gap: 4, fontSize: 10 } },
+                          React.createElement("span", { onClick: () => { if (editInitialMode !== "amount") { const pps = parseFloat(editPPS) || 0; if (editShares && pps) setEditCost((parseFloat(editShares) * pps).toFixed(2)); setEditInitialMode("amount"); } }, style: { cursor: "pointer", color: editInitialMode === "amount" ? X.purple : "#64748b", fontWeight: editInitialMode === "amount" ? 700 : 400 } }, "€"),
+                          React.createElement("span", { style: { color: "#334155" } }, "|"),
+                          React.createElement("span", { onClick: () => { if (editInitialMode !== "shares") { const pps = parseFloat(editPPS) || 0; if (editCost && pps) setEditShares((parseFloat(editCost) / pps).toFixed(4)); setEditInitialMode("shares"); } }, style: { cursor: "pointer", color: editInitialMode === "shares" ? X.purple : "#64748b", fontWeight: editInitialMode === "shares" ? 700 : 400 } }, "#")
+                        ),
+                        editInitialMode === "amount"
+                          ? React.createElement("input", { value: editCost, onChange: e => setEditCost(e.target.value), type: "number", placeholder: "Invest €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } })
+                          : React.createElement("input", { value: editShares, onChange: e => setEditShares(e.target.value), type: "number", placeholder: "Anzahl", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
                         React.createElement("input", { value: editPPS, onChange: e => setEditPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 100 } }),
                         React.createElement("input", { value: editDate, onChange: e => setEditDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
                         React.createElement("button", { onClick: () => {
                           const nachkaufSum = (pos.purchases || []).reduce((s, p) => s + p.amount, 0);
-                          const upd = {};
-                          if (editCost) upd.cost = parseFloat(editCost) + nachkaufSum;
+                          const pps = editPPS ? parseFloat(editPPS) : pos.pricePerShare;
+                          const initC = editInitialMode === "shares" ? (parseFloat(editShares) || 0) * (pps || 0) : parseFloat(editCost) || 0;
+                          const upd = { inputMode: editInitialMode };
+                          if (initC) upd.cost = initC + nachkaufSum;
                           if (editPPS) upd.pricePerShare = parseFloat(editPPS);
                           if (editDate) upd.purchaseDate = editDate;
-                          if (Object.keys(upd).length > 0) updateStock(pos.ticker, upd);
-                          setEditingInitial(null); setEditCost(""); setEditPPS(""); setEditDate("");
+                          updateStock(pos.ticker, upd);
+                          setEditingInitial(null); setEditCost(""); setEditShares(""); setEditPPS(""); setEditDate("");
                         }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
-                        React.createElement("button", { onClick: () => { setEditingInitial(null); setEditCost(""); setEditPPS(""); setEditDate(""); }, style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10 } }, "Abbrechen")
+                        React.createElement("button", { onClick: () => { setEditingInitial(null); setEditCost(""); setEditShares(""); setEditPPS(""); setEditDate(""); }, style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10 } }, "Abbrechen")
                       )
                     : React.createElement("div", { style: { marginTop: 2 } },
                         `${pos.purchaseDate ? new Date(pos.purchaseDate).toLocaleDateString("de-DE") : "?"}: €${((pos.cost || 0) - (pos.purchases || []).reduce((s, p) => s + p.amount, 0)).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${pos.pricePerShare?.toFixed(2) || "?"}`,
@@ -3228,17 +3257,24 @@ Antworte NUR mit validem JSON:
                   pos.purchases.map((p, i) =>
                     editingNachkauf === `${pos.ticker}-${i}`
                       ? React.createElement("div", { key: i, style: { display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", marginTop: 3 } },
-                          React.createElement("input", { value: editNkAmount, onChange: e => setEditNkAmount(e.target.value), type: "number", placeholder: "Betrag €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
+                          React.createElement("span", { style: { display: "flex", gap: 4, fontSize: 10 } },
+                            React.createElement("span", { onClick: () => { if (editNkMode !== "amount") { const pps = parseFloat(editNkPPS) || 0; if (editNkShares && pps) setEditNkAmount((parseFloat(editNkShares) * pps).toFixed(2)); setEditNkMode("amount"); } }, style: { cursor: "pointer", color: editNkMode === "amount" ? X.purple : "#64748b", fontWeight: editNkMode === "amount" ? 700 : 400 } }, "€"),
+                            React.createElement("span", { style: { color: "#334155" } }, "|"),
+                            React.createElement("span", { onClick: () => { if (editNkMode !== "shares") { const pps = parseFloat(editNkPPS) || 0; if (editNkAmount && pps) setEditNkShares((parseFloat(editNkAmount) / pps).toFixed(4)); setEditNkMode("shares"); } }, style: { cursor: "pointer", color: editNkMode === "shares" ? X.purple : "#64748b", fontWeight: editNkMode === "shares" ? 700 : 400 } }, "#")
+                          ),
+                          editNkMode === "amount"
+                            ? React.createElement("input", { value: editNkAmount, onChange: e => setEditNkAmount(e.target.value), type: "number", placeholder: "Betrag €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } })
+                            : React.createElement("input", { value: editNkShares, onChange: e => setEditNkShares(e.target.value), type: "number", placeholder: "Anzahl", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 90 } }),
                           React.createElement("input", { value: editNkPPS, onChange: e => setEditNkPPS(e.target.value), type: "number", placeholder: "Preis/Aktie €", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 100 } }),
                           React.createElement("input", { value: editNkDate, onChange: e => setEditNkDate(e.target.value), type: "date", style: { background: "#0f172a", border: "1px solid #334155", borderRadius: 6, padding: "4px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "'JetBrains Mono', monospace", width: 120 } }),
-                          React.createElement("button", { onClick: () => { const upd = {}; if (editNkAmount) upd.amount = parseFloat(editNkAmount); if (editNkPPS) upd.pricePerShare = parseFloat(editNkPPS); if (editNkDate) upd.date = editNkDate; updateNachkauf(pos.ticker, i, upd); }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
+                          React.createElement("button", { onClick: () => { const pps = editNkPPS ? parseFloat(editNkPPS) : p.pricePerShare; const upd = { inputMode: editNkMode }; if (editNkMode === "shares") { if (editNkShares) upd.amount = (parseFloat(editNkShares) || 0) * (pps || 0); } else { if (editNkAmount) upd.amount = parseFloat(editNkAmount); } if (editNkPPS) upd.pricePerShare = parseFloat(editNkPPS); if (editNkDate) upd.date = editNkDate; updateNachkauf(pos.ticker, i, upd); }, style: { background: "#6366f1", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 10, fontWeight: 700, color: "#fff", cursor: "pointer" } }, "OK"),
                           React.createElement("button", { onClick: () => setEditingNachkauf(null), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10 } }, "Abb.")
                         )
                       : React.createElement(React.Fragment, { key: i },
                           React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 } },
                             React.createElement("span", null, `${new Date(p.date).toLocaleDateString("de-DE")}: €${p.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} à €${p.pricePerShare?.toFixed(2) || "?"}`),
                             React.createElement("span", { style: { display: "flex", gap: 4, flexShrink: 0 } },
-                              React.createElement("button", { onClick: () => { setEditingNachkauf(`${pos.ticker}-${i}`); setEditNkAmount(String(p.amount)); setEditNkPPS(String(p.pricePerShare || "")); setEditNkDate(p.date || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10 } }, "✎"),
+                              React.createElement("button", { onClick: () => { const nkS = p.pricePerShare > 0 ? p.amount / p.pricePerShare : 0; setEditingNachkauf(`${pos.ticker}-${i}`); setEditNkMode(p.inputMode || "amount"); setEditNkAmount(String(p.amount)); setEditNkShares(nkS ? nkS.toFixed(4) : ""); setEditNkPPS(String(p.pricePerShare || "")); setEditNkDate(p.date || ""); }, style: { background: "none", border: "none", color: "#6366f1", cursor: "pointer", fontSize: 10 } }, "✎"),
                               React.createElement("button", { onClick: () => setConfirmAction({ type: "removeNachkauf", ticker: pos.ticker, index: i, date: new Date(p.date).toLocaleDateString("de-DE") }), style: { background: "none", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 10 } }, "✕")
                             )
                           ),
