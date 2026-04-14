@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.04.2026, 14:11 Uhr";
+const BUILD_TIMESTAMP = "14.04.2026, 14:17 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -3177,7 +3177,7 @@ Antworte NUR mit validem JSON:
               infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
                 (() => { const plI = calcPL(pos, fhd?.price, eurUsdRate); return React.createElement(React.Fragment, null,
                   plI && React.createElement("div", null, `Gesamt investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Ø €${plI.avgCost.toFixed(2)} · ${plI.boughtShares.toFixed(2)} gekauft${plI.soldShares > 0 ? ` · ${plI.soldShares.toFixed(2)} verkauft · ${plI.totalShares.toFixed(2)} verbleibend` : ` · ${plI.totalShares.toFixed(2)} Anteile`}`),
-                  plI && !isSold(pos) && React.createElement("div", { style: { marginTop: 3, color: plI.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(plI.currentValue - plI.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${plI.plPct >= 0 ? "+" : ""}${plI.plPct.toFixed(1)}%)`),
+                  plI && !isSold(pos) && React.createElement("div", { style: { marginTop: 3, color: plI.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(plI.currentValue - plI.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${plI.plPct >= 0 ? "+" : ""}${plI.plPct.toFixed(1)}%), Kurs @€${(fhd.price * eurUsdRate).toFixed(2)}`),
                   !plI && React.createElement("div", null, `Gesamt investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
                 ); })(),
                 /* Verkäufe */
