@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.04.2026, 15:14 Uhr";
+const BUILD_TIMESTAMP = "01.05.2026, 18:41 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -2239,6 +2239,13 @@ Antworte NUR mit validem JSON:
       setAnalysis(ana);
       addLog("✓ Status: " + (ana?.overallStatus || "?"));
 
+      // Earnings-Eskalation auf "ruhig" zurücksetzen, sobald die Gesamtanalyse
+      // nach allen Hyperscaler-Reports erfolgreich gelaufen ist.
+      if (Object.values(earningsDates).every(v => v.reported)) {
+        updateEarningsDates(getDefaultEarningsDates());
+        addLog("✓ Earnings-Banner zurückgesetzt (nächster Zyklus)");
+      }
+
       const now = new Date();
       setPct(100); setLastRun(now); setBusy(false);
       debugSaveToServer(stocks, fmpData, eurUsdRate);
@@ -2261,7 +2268,7 @@ Antworte NUR mit validem JSON:
       setBusy(false);
       debugSaveToServer(stocks, fmpData, eurUsdRate);
     }
-  }, [addLog, stocks]);
+  }, [addLog, stocks, earningsDates, updateEarningsDates]);
 
   /* ═══ INDEPENDENT TIMING ═══ */
   const runTiming = useCallback(async () => {
