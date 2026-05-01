@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "01.05.2026, 18:41 Uhr";
+const BUILD_TIMESTAMP = "01.05.2026, 18:52 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -1228,6 +1228,14 @@ function earningsPhase(dates) {
   return "ruhig";
 }
 
+function analysisAfterReports(dates, lastRun) {
+  if (!lastRun) return false;
+  const reportedDates = Object.values(dates).filter(v => v.reported).map(v => new Date(v.date));
+  if (reportedDates.length === 0) return false;
+  const latest = Math.max(...reportedDates.map(d => d.getTime()));
+  return new Date(lastRun).getTime() > latest;
+}
+
 const PHASE_STYLES = {
   ruhig: { bg: "#6366f108", border: "#6366f122", accent: "#6366f1", label: "Earnings-Radar" },
   aufmerksamkeit: { bg: "#eab30812", border: "#eab30844", accent: "#eab308", label: "Earnings bald" },
@@ -1268,12 +1276,15 @@ Use format YYYY-MM-DD. Only include companies that have confirmed dates. If a da
   return null;
 }
 
-function EarningsBanner({ dates, onUpdate, busy }) {
+function EarningsBanner({ dates, onUpdate, busy, lastRun }) {
   const [searching, setSearching] = React.useState(false);
+  const [confirmReset, setConfirmReset] = React.useState(false);
   const phase = earningsPhase(dates);
   const ps = PHASE_STYLES[phase];
   const allReported = phase === "allReported";
   const canSearch = phase === "aufmerksamkeit" || phase === "bald" || phase === "jetzt";
+  const analysisDone = analysisAfterReports(dates, lastRun);
+  const canReset = phase !== "ruhig";
 
   const handleSearch = async () => {
     setSearching(true);
@@ -1289,8 +1300,14 @@ function EarningsBanner({ dates, onUpdate, busy }) {
     onUpdate(updated);
   };
 
-  const handleReset = () => {
+  const performReset = () => {
     onUpdate(getDefaultEarningsDates());
+    setConfirmReset(false);
+  };
+
+  const handleReset = () => {
+    if (analysisDone) performReset();
+    else setConfirmReset(true);
   };
 
   const sorted = Object.entries(dates).sort((a, b) => new Date(a[1].date) - new Date(b[1].date));
@@ -1322,10 +1339,32 @@ function EarningsBanner({ dates, onUpdate, busy }) {
           fontWeight: 600,
         } }, allConfirmed ? "✓ Bestätigt" : anyConfirmed ? "◐ Teilw. bestätigt" : "~ Geschätzt")
       ),
-      allReported && React.createElement("button", {
+      canReset && React.createElement("button", {
         onClick: handleReset,
+        title: analysisDone ? "Eskalation auf 'ruhig' zurücksetzen" : "Manuell zurücksetzen (ohne Analyse)",
         style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10, padding: 2, fontFamily: "inherit" }
       }, "↻ Reset")
+    ),
+
+    // Reset-Bestätigung wenn keine Analyse nach den Reports erfolgt ist
+    confirmReset && React.createElement("div", {
+      style: { background: `${X.yellow}10`, border: `1px solid ${X.yellow}44`, borderRadius: 8, padding: "10px 12px", marginBottom: 8, marginTop: 4 }
+    },
+      React.createElement("div", { style: { fontSize: 11, color: "#e2e8f0", lineHeight: 1.6, marginBottom: 8 } },
+        "Es wurde noch keine Gesamtanalyse nach den letzten Earnings-Reports durchgeführt.",
+        React.createElement("br"),
+        React.createElement("span", { style: { color: "#94a3b8" } }, "Eskalation trotzdem auf 'ruhig' herabstufen?")
+      ),
+      React.createElement("div", { style: { display: "flex", gap: 6 } },
+        React.createElement("button", {
+          onClick: performReset,
+          style: { flex: 1, padding: 6, borderRadius: 6, border: "none", cursor: "pointer", fontSize: 10, fontWeight: 700, fontFamily: "inherit", background: `${X.yellow}33`, color: X.yellow }
+        }, "Ja, herabstufen"),
+        React.createElement("button", {
+          onClick: () => setConfirmReset(false),
+          style: { flex: 1, padding: 6, borderRadius: 6, border: `1px solid #334155`, cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#94a3b8" }
+        }, "Abbrechen")
+      )
     ),
 
     // Hyperscaler-Zeilen
@@ -1763,6 +1802,15 @@ function App() {
     setEarningsDates(newDates);
     saveEarningsDates(newDates);
   }, []);
+
+  // Auto-Downgrade: Wenn alle Hyperscaler reported sind UND die letzte
+  // Gesamtanalyse nach dem letzten Earnings-Datum lief, Banner zurücksetzen.
+  useEffect(() => {
+    const allReported = Object.values(earningsDates).every(v => v.reported);
+    if (allReported && analysisAfterReports(earningsDates, lastRun)) {
+      updateEarningsDates(getDefaultEarningsDates());
+    }
+  }, [earningsDates, lastRun, updateEarningsDates]);
 
   useEffect(() => {
     const saved = loadData();
@@ -2239,13 +2287,6 @@ Antworte NUR mit validem JSON:
       setAnalysis(ana);
       addLog("✓ Status: " + (ana?.overallStatus || "?"));
 
-      // Earnings-Eskalation auf "ruhig" zurücksetzen, sobald die Gesamtanalyse
-      // nach allen Hyperscaler-Reports erfolgreich gelaufen ist.
-      if (Object.values(earningsDates).every(v => v.reported)) {
-        updateEarningsDates(getDefaultEarningsDates());
-        addLog("✓ Earnings-Banner zurückgesetzt (nächster Zyklus)");
-      }
-
       const now = new Date();
       setPct(100); setLastRun(now); setBusy(false);
       debugSaveToServer(stocks, fmpData, eurUsdRate);
@@ -2268,7 +2309,7 @@ Antworte NUR mit validem JSON:
       setBusy(false);
       debugSaveToServer(stocks, fmpData, eurUsdRate);
     }
-  }, [addLog, stocks, earningsDates, updateEarningsDates]);
+  }, [addLog, stocks]);
 
   /* ═══ INDEPENDENT TIMING ═══ */
   const runTiming = useCallback(async () => {
@@ -2553,6 +2594,7 @@ Antworte NUR mit validem JSON:
         dates: earningsDates,
         onUpdate: updateEarningsDates,
         busy,
+        lastRun,
       }),
 
       /* ── MAIN ANALYSIS BUTTON ── */
