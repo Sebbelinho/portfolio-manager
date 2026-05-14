@@ -19,6 +19,32 @@
     ::selection { background: #6366f155; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
     @keyframes earningsPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.85;transform:scale(1.02)} }
+    @keyframes bucketTileIn { from { opacity:0; transform:scale(.7) translateY(-4px); } to { opacity:1; transform:scale(1) translateY(0); } }
+    @keyframes bucketPillIn { from { opacity:0; transform:scale(.6); } to { opacity:1; transform:scale(1); } }
+    .bucket-tile { animation: bucketTileIn .22s cubic-bezier(.34,1.56,.64,1); transition: transform .12s ease, box-shadow .15s ease, border-color .15s ease; touch-action: manipulation; }
+    .bucket-edge { transition: filter .12s ease, background .12s ease; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+    .bucket-edge:active { transform: scale(.92); filter: brightness(1.8); }
+    .bucket-pill { animation: bucketPillIn .28s cubic-bezier(.34,1.56,.64,1); transition: background .2s, color .2s, border-color .2s; }
+    .bucket-reset { transition: transform .15s ease, background .15s ease, border-color .15s ease; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+    .bucket-reset svg { transition: transform .25s ease; }
+    .bucket-reset:active { transform: scale(.95); background: #334155 !important; }
+    .bucket-box { transition: border-color .2s ease, box-shadow .2s ease; }
+    .bucket-name { transition: color .15s ease, transform .15s ease; -webkit-tap-highlight-color: transparent; }
+    @media (hover: hover) {
+      .bucket-tile:hover { transform: translateY(-1px); box-shadow: 0 6px 14px #00000055; }
+      .bucket-edge:hover { filter: brightness(1.6); }
+      .bucket-reset:hover { background: #334155 !important; border-color: #475569 !important; }
+      .bucket-reset:hover svg { transform: scale(1.15); }
+      .bucket-name:hover { transform: scale(1.05); }
+    }
+    @media (max-width: 600px) {
+      .bucket-row { gap: 4px !important; }
+      .bucket-box { padding: 6px !important; }
+      .bucket-edge { min-width: 22px !important; }
+      .bucket-tile span.m { font-size: 12px !important; padding: 11px 2px !important; }
+      .bucket-pill { font-size: 11px !important; padding: 3px 10px !important; }
+      .bucket-reset { padding: 6px 12px !important; }
+    }
     input, select, button { font-family: inherit; }
     input:focus, select:focus { outline: 1px solid #6366f1; }
     ::-webkit-scrollbar { width: 6px; height: 6px; }

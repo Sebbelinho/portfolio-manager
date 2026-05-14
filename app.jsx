@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.05.2026, 21:08 Uhr";
+const BUILD_TIMESTAMP = "14.05.2026, 21:20 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -3401,7 +3401,7 @@ Antworte NUR mit validem JSON:
         /* ═══ BUCKET-ANSICHT ═══ */
         React.createElement(React.Fragment, null,
           React.createElement("div", { style: { fontSize: 11, fontWeight: 700, color: X.purple, marginBottom: 8, marginTop: 18, textTransform: "uppercase", letterSpacing: ".06em" } }, "Buckets"),
-          React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "stretch" } },
+          React.createElement("div", { className: "bucket-row", style: { display: "flex", gap: 8, alignItems: "stretch" } },
             ["left", "neutral", "right"].map(b => {
               const isNeutral = b === "neutral";
               const pl = !isNeutral ? bucketPL(b) : null;
@@ -3410,7 +3410,7 @@ Antworte NUR mit validem JSON:
               const tileBg = b === "left" ? `${X.green}15` : b === "right" ? `${X.red}15` : "#1e293b";
               return React.createElement("div", { key: b, style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 } },
                 React.createElement("div", { style: { height: 30, display: "flex", alignItems: "center", justifyContent: "center" } },
-                  !isNeutral && pl !== null && React.createElement("div", { className: "m", style: {
+                  !isNeutral && pl !== null && React.createElement("div", { className: "m bucket-pill", style: {
                     fontSize: 12, fontWeight: 700, padding: "4px 14px", borderRadius: 999,
                     background: pl >= 0 ? `${X.green}22` : `${X.red}22`,
                     color: pl >= 0 ? X.green : X.red, border: `1px solid ${pl >= 0 ? X.green : X.red}44`
@@ -3418,11 +3418,12 @@ Antworte NUR mit validem JSON:
                   isNeutral && (bucketStocks("left").length + bucketStocks("right").length) > 0 && React.createElement("button", {
                     onClick: resetBucketsNeutral,
                     title: "Alle Kacheln in die Mitte zurücksetzen",
+                    className: "bucket-reset bucket-pill",
                     style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 999, padding: "4px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: "#cbd5e1", fontSize: 11, fontWeight: 600, fontFamily: "inherit" },
                     dangerouslySetInnerHTML: { __html: '<svg width="16" height="14" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="16"/><line x1="2" y1="9" x2="9" y2="9"/><polyline points="6 5 9 9 6 13"/><line x1="22" y1="9" x2="15" y2="9"/><polyline points="18 5 15 9 18 13"/></svg><span style="margin-left:6px;font-family:inherit">Zentrieren</span>' }
                   })
                 ),
-                React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${accent}44`, padding: 10, minHeight: 200, display: "flex", flexDirection: "column", gap: 6 } },
+                React.createElement("div", { className: "bucket-box", style: { background: "#111827", borderRadius: 12, border: `1px solid ${accent}44`, padding: 10, minHeight: 200, display: "flex", flexDirection: "column", gap: 6 } },
                   React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 8px", background: `${accent}22`, borderRadius: 8, marginBottom: 4, minHeight: 24 } },
                     isNeutral
                       ? React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: "#cbd5e1", letterSpacing: ".04em" } }, "Neutral")
@@ -3438,6 +3439,7 @@ Antworte NUR mit validem JSON:
                         : React.createElement("span", {
                             onClick: () => { setEditingBucket(b); setBucketNameDraft(bucketNames[b]); },
                             title: "Klicken zum Umbenennen",
+                            className: "bucket-name",
                             style: { fontSize: 11, fontWeight: 700, color: accent, letterSpacing: ".04em", cursor: "pointer" }
                           }, bucketNames[b])
                   ),
@@ -3445,17 +3447,20 @@ Antworte NUR mit validem JSON:
                     ? React.createElement("div", { style: { fontSize: 10, color: "#475569", textAlign: "center", padding: 16 } }, "—")
                     : tiles.map(s => React.createElement("div", {
                         key: s.ticker,
+                        className: "bucket-tile",
                         style: { background: tileBg, border: `1px solid ${accent}44`, borderRadius: 8, display: "flex", alignItems: "stretch", overflow: "hidden" }
                       },
                         b !== "left" && React.createElement("button", {
                           onClick: () => moveBucket(s.ticker, -1),
                           title: "Nach links",
+                          className: "bucket-edge",
                           style: { background: `${accent}33`, border: "none", color: accent, cursor: "pointer", fontSize: 11, fontWeight: 700, padding: 0, width: 12, flexShrink: 0, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }
                         }, "<"),
                         React.createElement("span", { className: "m", style: { fontSize: 11, fontWeight: 700, color: "#e2e8f0", flex: 1, minWidth: 0, textAlign: "center", padding: "6px 2px", wordBreak: "break-all" } }, s.ticker),
                         b !== "right" && React.createElement("button", {
                           onClick: () => moveBucket(s.ticker, +1),
                           title: "Nach rechts",
+                          className: "bucket-edge",
                           style: { background: `${accent}33`, border: "none", color: accent, cursor: "pointer", fontSize: 11, fontWeight: 700, padding: 0, width: 12, flexShrink: 0, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }
                         }, ">")
                       ))
