@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.05.2026, 20:44 Uhr";
+const BUILD_TIMESTAMP = "14.05.2026, 20:53 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
