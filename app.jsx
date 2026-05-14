@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.05.2026, 21:44 Uhr";
+const BUILD_TIMESTAMP = "14.05.2026, 21:50 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -3458,7 +3458,7 @@ Antworte NUR mit validem JSON:
                     })
                   ),
                   !isNeutral && colorPickerBucket === b && React.createElement("div", {
-                    style: { position: "absolute", top: 38, left: 6, right: 6, background: "#0f172a", border: "1px solid #334155", borderRadius: 10, padding: 8, zIndex: 20, boxShadow: "0 8px 24px #00000099" }
+                    style: { position: "absolute", top: 38, [b === "right" ? "right" : "left"]: 0, background: "#0f172a", border: "1px solid #334155", borderRadius: 10, padding: 10, zIndex: 20, boxShadow: "0 8px 24px #00000099", minWidth: 168, width: "max-content", maxWidth: "calc(100vw - 24px)" }
                   },
                     React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 8 } },
                       ["#22c55e", "#eab308", "#f97316", "#ef4444", "#ec4899", "#a78bfa", "#6366f1", "#22d3ee"].map(c =>
