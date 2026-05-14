@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.05.2026, 20:53 Uhr";
+const BUILD_TIMESTAMP = "14.05.2026, 21:01 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -3432,23 +3432,19 @@ Antworte NUR mit validem JSON:
                     ? React.createElement("div", { style: { fontSize: 10, color: "#475569", textAlign: "center", padding: 16 } }, "—")
                     : tiles.map(s => React.createElement("div", {
                         key: s.ticker,
-                        style: { background: tileBg, border: `1px solid ${accent}44`, borderRadius: 8, padding: "6px 8px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }
+                        style: { background: tileBg, border: `1px solid ${accent}44`, borderRadius: 8, display: "flex", alignItems: "stretch", overflow: "hidden" }
                       },
-                        b !== "left"
-                          ? React.createElement("button", {
-                              onClick: () => moveBucket(s.ticker, -1),
-                              title: "Nach links",
-                              style: { background: "none", border: "none", color: accent, cursor: "pointer", fontSize: 14, padding: "0 4px", lineHeight: 1, fontWeight: 700 }
-                            }, "←")
-                          : React.createElement("span", { style: { width: 14 } }),
-                        React.createElement("span", { className: "m", style: { fontSize: 11, fontWeight: 700, color: "#e2e8f0", flex: 1, textAlign: "center", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, s.ticker),
-                        b !== "right"
-                          ? React.createElement("button", {
-                              onClick: () => moveBucket(s.ticker, +1),
-                              title: "Nach rechts",
-                              style: { background: "none", border: "none", color: accent, cursor: "pointer", fontSize: 14, padding: "0 4px", lineHeight: 1, fontWeight: 700 }
-                            }, "→")
-                          : React.createElement("span", { style: { width: 14 } })
+                        b !== "left" && React.createElement("button", {
+                          onClick: () => moveBucket(s.ticker, -1),
+                          title: "Nach links",
+                          style: { background: `${accent}33`, border: "none", color: accent, cursor: "pointer", fontSize: 11, fontWeight: 700, padding: 0, width: 12, flexShrink: 0, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }
+                        }, "<"),
+                        React.createElement("span", { className: "m", style: { fontSize: 11, fontWeight: 700, color: "#e2e8f0", flex: 1, minWidth: 0, textAlign: "center", padding: "6px 2px", wordBreak: "break-all" } }, s.ticker),
+                        b !== "right" && React.createElement("button", {
+                          onClick: () => moveBucket(s.ticker, +1),
+                          title: "Nach rechts",
+                          style: { background: `${accent}33`, border: "none", color: accent, cursor: "pointer", fontSize: 11, fontWeight: 700, padding: 0, width: 12, flexShrink: 0, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }
+                        }, ">")
                       ))
                 )
               );
