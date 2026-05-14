@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.05.2026, 21:01 Uhr";
+const BUILD_TIMESTAMP = "14.05.2026, 21:08 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -2553,6 +2553,13 @@ Antworte NUR mit validem JSON:
     const next = order[Math.max(0, Math.min(order.length - 1, idx + dir))];
     if (next !== (cur.bucket || "neutral")) updateStock(ticker, { bucket: next });
   };
+  const resetBucketsNeutral = () => {
+    setStocks(prev => {
+      const updated = prev.map(s => (s.bucket && s.bucket !== "neutral") ? { ...s, bucket: "neutral" } : s);
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames });
+      return updated;
+    });
+  };
   const commitBucketName = (which, name) => {
     const trimmed = (name || "").trim() || (which === "left" ? "Bucket 1" : "Bucket 2");
     const next = { ...bucketNames, [which]: trimmed };
@@ -3407,7 +3414,13 @@ Antworte NUR mit validem JSON:
                     fontSize: 12, fontWeight: 700, padding: "4px 14px", borderRadius: 999,
                     background: pl >= 0 ? `${X.green}22` : `${X.red}22`,
                     color: pl >= 0 ? X.green : X.red, border: `1px solid ${pl >= 0 ? X.green : X.red}44`
-                  } }, `${pl >= 0 ? "+" : ""}${pl.toFixed(2)}%`)
+                  } }, `${pl >= 0 ? "+" : ""}${pl.toFixed(2)}%`),
+                  isNeutral && (bucketStocks("left").length + bucketStocks("right").length) > 0 && React.createElement("button", {
+                    onClick: resetBucketsNeutral,
+                    title: "Alle Kacheln in die Mitte zurücksetzen",
+                    style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 999, padding: "4px 12px", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: "#cbd5e1", fontSize: 11, fontWeight: 600, fontFamily: "inherit" },
+                    dangerouslySetInnerHTML: { __html: '<svg width="16" height="14" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="16"/><line x1="2" y1="9" x2="9" y2="9"/><polyline points="6 5 9 9 6 13"/><line x1="22" y1="9" x2="15" y2="9"/><polyline points="18 5 15 9 18 13"/></svg><span style="margin-left:6px;font-family:inherit">Zentrieren</span>' }
+                  })
                 ),
                 React.createElement("div", { style: { background: "#111827", borderRadius: 12, border: `1px solid ${accent}44`, padding: 10, minHeight: 200, display: "flex", flexDirection: "column", gap: 6 } },
                   React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 8px", background: `${accent}22`, borderRadius: 8, marginBottom: 4, minHeight: 24 } },
