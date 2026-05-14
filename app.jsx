@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.05.2026, 21:34 Uhr";
+const BUILD_TIMESTAMP = "14.05.2026, 21:44 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -1766,8 +1766,10 @@ function App() {
   const [nvidia, setNvidia] = useState(null);
   const [positions, setPositions] = useState({});
   const [bucketNames, setBucketNames] = useState({ left: "Bucket 1", right: "Bucket 2" });
+  const [bucketColors, setBucketColors] = useState({ left: "#22c55e", right: "#ef4444" });
   const [editingBucket, setEditingBucket] = useState(null);
   const [bucketNameDraft, setBucketNameDraft] = useState("");
+  const [colorPickerBucket, setColorPickerBucket] = useState(null);
   const [insider, setInsider] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [timing, setTiming] = useState(null);
@@ -1825,6 +1827,7 @@ function App() {
       if (saved.nvidia) setNvidia(saved.nvidia);
       if (saved.positions) setPositions(saved.positions);
       if (saved.bucketNames) setBucketNames({ left: saved.bucketNames.left || "Bucket 1", right: saved.bucketNames.right || "Bucket 2" });
+      if (saved.bucketColors) setBucketColors({ left: saved.bucketColors.left || "#22c55e", right: saved.bucketColors.right || "#ef4444" });
       if (saved.insider) setInsider(saved.insider);
       if (saved.analysis) setAnalysis(saved.analysis);
       if (saved.timing) setTiming(saved.timing);
@@ -1963,7 +1966,7 @@ function App() {
     };
     setStocks(prev => {
       const updated = [...prev, newStock];
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames, bucketColors });
       return updated;
     });
     setAddTicker(""); setAddName(""); setAddSector(""); setAddCost(""); setAddShares(""); setAddMode("shares"); setAddPricePerShare(""); setAddDate(new Date().toISOString().slice(0, 10)); setAddType("other"); setAddSens("low"); setAddMoat("medium");
@@ -1975,7 +1978,7 @@ function App() {
       const updated = prev.filter(s => s.ticker !== ticker);
       setPositions(prevPos => {
         const newPos = { ...prevPos }; delete newPos[ticker];
-        saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions: newPos, insider, analysis, timing, finnhubData, lastRun: lastRun?.toISOString(), logs, bucketNames });
+        saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions: newPos, insider, analysis, timing, finnhubData, lastRun: lastRun?.toISOString(), logs, bucketNames, bucketColors });
         return newPos;
       });
       return updated;
@@ -1985,7 +1988,7 @@ function App() {
   const updateStock = useCallback((ticker, fields) => {
     setStocks(prev => {
       const updated = prev.map(s => s.ticker === ticker ? { ...s, ...fields } : s);
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames, bucketColors });
       return updated;
     });
   }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
@@ -1999,7 +2002,7 @@ function App() {
     if (!amount || amount <= 0) return;
     setStocks(prev => {
       const updated = prev.map(s => s.ticker === ticker ? { ...s, cost: s.cost + amount, purchases: [...(s.purchases || []), { amount, pricePerShare: pricePS, date: date || new Date().toISOString().slice(0, 10), inputMode: mode || "amount" }] } : s);
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames, bucketColors });
       return updated;
     });
     setNachkaufTicker(null);
@@ -2020,7 +2023,7 @@ function App() {
         const costDiff = (newP.amount || 0) - (oldP.amount || 0);
         return { ...s, cost: s.cost + costDiff, purchases: newPurchases };
       });
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames, bucketColors });
       return updated;
     });
     setEditingNachkauf(null);
@@ -2033,7 +2036,7 @@ function App() {
         const removed = s.purchases[idx];
         return { ...s, cost: s.cost - (removed.amount || 0), purchases: s.purchases.filter((_, i) => i !== idx) };
       });
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames, bucketColors });
       return updated;
     });
   }, [capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun, logs]);
@@ -2051,7 +2054,7 @@ function App() {
         if (isSold(newStock)) newStock.sold = true;
         return newStock;
       });
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames, bucketColors });
       return updated;
     });
     setSellTicker(null); setSellDate(new Date().toISOString().slice(0, 10)); setSellPrice(""); setSellShares("");
@@ -2066,7 +2069,7 @@ function App() {
         if (!isSold(newStock)) newStock.sold = false;
         return newStock;
       });
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames, bucketColors });
       return updated;
     });
     setConfirmAction(null);
@@ -2296,7 +2299,7 @@ Antworte NUR mit validem JSON:
       debugSaveToServer(stocks, fmpData, eurUsdRate);
 
       setLogs(prevLogs => {
-        saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, lastRun: now.toISOString(), logs: prevLogs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact: lCapexImpact, geopolitik: lGeopolitik, bucketNames });
+        saveData({ stocks, capex: lCapex, tsmc: lTsmc, dram: lDram, nvidia: lNvidia, insider: lInsider, analysis: ana, timing: tim, finnhubData: fmpData, insiderData: lInsiderData, macro: lMacro, marketIndicators: lMarket, lastRun: now.toISOString(), logs: prevLogs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, capexImpact: lCapexImpact, geopolitik: lGeopolitik, bucketNames, bucketColors });
         return prevLogs;
       });
     } catch (e) {
@@ -2556,9 +2559,15 @@ Antworte NUR mit validem JSON:
   const resetBucketsNeutral = () => {
     setStocks(prev => {
       const updated = prev.map(s => (s.bucket && s.bucket !== "neutral") ? { ...s, bucket: "neutral" } : s);
-      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames });
+      saveData({ stocks: updated, capex, tsmc, dram, nvidia, positions, insider, analysis, timing, finnhubData, insiderData, lastRun: lastRun?.toISOString(), logs, dcaPlan, dcaBudget, dcaMonths, dcaExtra, bucketNames, bucketColors });
       return updated;
     });
+  };
+  const commitBucketColor = (which, color) => {
+    const next = { ...bucketColors, [which]: color };
+    setBucketColors(next);
+    const existing = loadData() || {};
+    saveData({ ...existing, bucketColors: next });
   };
   const commitBucketName = (which, name) => {
     const trimmed = (name || "").trim() || (which === "left" ? "Bucket 1" : "Bucket 2");
@@ -3404,8 +3413,8 @@ Antworte NUR mit validem JSON:
               const isNeutral = b === "neutral";
               const pl = !isNeutral ? bucketPL(b) : null;
               const tiles = bucketStocks(b);
-              const accent = b === "left" ? X.green : b === "right" ? X.red : "#475569";
-              const tileBg = b === "left" ? `${X.green}15` : b === "right" ? `${X.red}15` : "#1e293b";
+              const accent = isNeutral ? "#475569" : bucketColors[b];
+              const tileBg = isNeutral ? "#1e293b" : `${accent}15`;
               return React.createElement("div", { key: b, style: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 6 } },
                 React.createElement("div", { style: { height: 30, display: "flex", alignItems: "center", justifyContent: "center" } },
                   !isNeutral && pl !== null && React.createElement("div", { className: "m bucket-pill", style: {
@@ -3421,25 +3430,59 @@ Antworte NUR mit validem JSON:
                     dangerouslySetInnerHTML: { __html: '<svg width="16" height="14" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="16"/><line x1="2" y1="9" x2="9" y2="9"/><polyline points="6 5 9 9 6 13"/><line x1="22" y1="9" x2="15" y2="9"/><polyline points="18 5 15 9 18 13"/></svg><span style="margin-left:6px;font-family:inherit">Zentrieren</span>' }
                   })
                 ),
-                React.createElement("div", { className: "bucket-box", style: { background: "#111827", borderRadius: 12, border: `1px solid ${accent}44`, padding: 10, minHeight: 200, display: "flex", flexDirection: "column", gap: 6 } },
-                  React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 8px", background: `${accent}22`, borderRadius: 8, marginBottom: 4, minHeight: 24 } },
-                    isNeutral
-                      ? React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: "#cbd5e1", letterSpacing: ".04em" } }, "Neutral")
-                      : editingBucket === b
-                        ? React.createElement("input", {
-                            autoFocus: true,
-                            value: bucketNameDraft,
-                            onChange: e => setBucketNameDraft(e.target.value),
-                            onBlur: () => { commitBucketName(b, bucketNameDraft); setEditingBucket(null); },
-                            onKeyDown: e => { if (e.key === "Enter") { commitBucketName(b, bucketNameDraft); setEditingBucket(null); } if (e.key === "Escape") setEditingBucket(null); },
-                            style: { background: "#0f172a", border: `1px solid ${accent}`, borderRadius: 6, padding: "2px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "inherit", textAlign: "center", width: "100%" }
-                          })
-                        : React.createElement("span", {
-                            onClick: () => { setEditingBucket(b); setBucketNameDraft(bucketNames[b]); },
-                            title: "Klicken zum Umbenennen",
-                            className: "bucket-name",
-                            style: { fontSize: 11, fontWeight: 700, color: accent, letterSpacing: ".04em", cursor: "pointer" }
-                          }, bucketNames[b])
+                React.createElement("div", { className: "bucket-box", style: { background: "#111827", borderRadius: 12, border: `1px solid ${accent}44`, padding: 10, minHeight: 200, display: "flex", flexDirection: "column", gap: 6, position: "relative" } },
+                  React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "center", padding: "4px 4px 4px 8px", background: `${accent}22`, borderRadius: 8, marginBottom: 4, minHeight: 24, gap: 6 } },
+                    React.createElement("div", { style: { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minWidth: 0 } },
+                      isNeutral
+                        ? React.createElement("span", { style: { fontSize: 11, fontWeight: 700, color: "#cbd5e1", letterSpacing: ".04em" } }, "Neutral")
+                        : editingBucket === b
+                          ? React.createElement("input", {
+                              autoFocus: true,
+                              value: bucketNameDraft,
+                              onChange: e => setBucketNameDraft(e.target.value),
+                              onBlur: () => { commitBucketName(b, bucketNameDraft); setEditingBucket(null); },
+                              onKeyDown: e => { if (e.key === "Enter") { commitBucketName(b, bucketNameDraft); setEditingBucket(null); } if (e.key === "Escape") setEditingBucket(null); },
+                              style: { background: "#0f172a", border: `1px solid ${accent}`, borderRadius: 6, padding: "2px 6px", fontSize: 11, color: "#e2e8f0", fontFamily: "inherit", textAlign: "center", width: "100%" }
+                            })
+                          : React.createElement("span", {
+                              onClick: () => { setEditingBucket(b); setBucketNameDraft(bucketNames[b]); },
+                              title: "Klicken zum Umbenennen",
+                              className: "bucket-name",
+                              style: { fontSize: 11, fontWeight: 700, color: accent, letterSpacing: ".04em", cursor: "pointer" }
+                            }, bucketNames[b])
+                    ),
+                    !isNeutral && React.createElement("button", {
+                      onClick: () => setColorPickerBucket(colorPickerBucket === b ? null : b),
+                      title: "Farbe ändern",
+                      style: { width: 16, height: 16, borderRadius: "50%", background: accent, border: "2px solid #0f172a", boxShadow: `0 0 0 1px ${accent}`, cursor: "pointer", padding: 0, flexShrink: 0 }
+                    })
+                  ),
+                  !isNeutral && colorPickerBucket === b && React.createElement("div", {
+                    style: { position: "absolute", top: 38, left: 6, right: 6, background: "#0f172a", border: "1px solid #334155", borderRadius: 10, padding: 8, zIndex: 20, boxShadow: "0 8px 24px #00000099" }
+                  },
+                    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginBottom: 8 } },
+                      ["#22c55e", "#eab308", "#f97316", "#ef4444", "#ec4899", "#a78bfa", "#6366f1", "#22d3ee"].map(c =>
+                        React.createElement("button", {
+                          key: c,
+                          onClick: () => { commitBucketColor(b, c); setColorPickerBucket(null); },
+                          title: c,
+                          style: { width: 24, height: 24, borderRadius: "50%", background: c, border: bucketColors[b] === c ? "2px solid #fff" : "2px solid transparent", cursor: "pointer", padding: 0, margin: "0 auto", display: "block" }
+                        })
+                      )
+                    ),
+                    React.createElement("label", { style: { display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: "#94a3b8", cursor: "pointer" } },
+                      React.createElement("input", {
+                        type: "color",
+                        value: bucketColors[b],
+                        onChange: e => commitBucketColor(b, e.target.value),
+                        style: { width: 24, height: 24, border: "none", background: "none", cursor: "pointer", padding: 0 }
+                      }),
+                      "Eigene Farbe"
+                    ),
+                    React.createElement("button", {
+                      onClick: () => setColorPickerBucket(null),
+                      style: { marginTop: 6, width: "100%", padding: "4px 8px", background: "#1e293b", border: "1px solid #334155", borderRadius: 6, color: "#94a3b8", fontSize: 10, cursor: "pointer", fontFamily: "inherit" }
+                    }, "Schließen")
                   ),
                   tiles.length === 0
                     ? React.createElement("div", { style: { fontSize: 10, color: "#475569", textAlign: "center", padding: 16 } }, "—")
