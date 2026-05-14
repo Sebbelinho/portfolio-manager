@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.05.2026, 21:20 Uhr";
+const BUILD_TIMESTAMP = "14.05.2026, 21:31 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -3056,7 +3056,7 @@ Antworte NUR mit validem JSON:
           const pr = positions[pos.ticker];
           const fhd = finnhubData[pos.ticker];
           const incomplete = !pos.pricePerShare || !pos.purchaseDate;
-          return React.createElement("div", { key: pos.ticker, style: { background: "#111827", borderRadius: 12, border: isSold(pos) ? `1px solid #334155` : incomplete ? `2px solid ${X.orange}` : "1px solid #1e293b", padding: 13, marginBottom: 8, opacity: isSold(pos) ? 0.55 : 1 } },
+          return React.createElement("div", { key: pos.ticker, onClick: e => { if (e.target.closest('button, input, select, textarea, a')) return; setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker); }, style: { background: "#111827", borderRadius: 12, border: isSold(pos) ? `1px solid #334155` : incomplete ? `2px solid ${X.orange}` : "1px solid #1e293b", padding: 13, marginBottom: 8, opacity: isSold(pos) ? 0.55 : 1, cursor: "pointer" } },
             React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9, minWidth: 0, flex: 1 } },
                 React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.purple, flexShrink: 0 } }, pos.ticker),
@@ -3065,7 +3065,7 @@ Antworte NUR mit validem JSON:
                     React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, pos.name),
                     React.createElement(TypeBadge, { type: "capex" }),
                     isSold(pos) && React.createElement("span", { style: { fontSize: 8, padding: "2px 6px", borderRadius: 8, background: `${X.red}22`, color: X.red, fontWeight: 700, letterSpacing: ".04em" } }, "VERKAUFT"),
-                    !isSold(pos) && (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — ⓘ klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
+                    !isSold(pos) && (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — Kachel klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
                   ),
                   React.createElement("div", { style: { fontSize: 10, color: "#64748b" } }, `${pos.sector} · Sensitivität: `, React.createElement("span", { style: { color: sensColor(pos.sensitivity) } }, pos.sensitivity), ` · Moat: ${moatLabel(pos.moat)}`)
                 )
@@ -3086,7 +3086,6 @@ Antworte NUR mit validem JSON:
                   pos.sales?.length > 0 && !isSold(pos) && React.createElement("div", { style: { fontSize: 9, color: X.orange } }, `${pos.sales.reduce((s, sl) => s + sl.shares, 0).toFixed(1)} verkauft`),
                   pr && React.createElement(BDG, { s: pr.sentiment })
                 ),
-                React.createElement("button", { onClick: () => setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", color: "#64748b", fontSize: 12, flexShrink: 0 } }, "ⓘ"),
                 !isSold(pos) && React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
                 React.createElement("button", { onClick: () => { setSellTicker(sellTicker === pos.ticker ? null : pos.ticker); setSellShares(""); setSellPrice(""); }, style: { background: `${X.orange}22`, border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' }, title: "Verkauf eintragen" }),
                 React.createElement("button", { onClick: () => setConfirmAction({ type: "removeStock", ticker: pos.ticker, name: pos.name }), style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
@@ -3231,7 +3230,7 @@ Antworte NUR mit validem JSON:
             const pr = positions[pos.ticker];
             const fhd = finnhubData[pos.ticker];
             const incomplete = !pos.pricePerShare || !pos.purchaseDate;
-            return React.createElement("div", { key: pos.ticker, style: { background: "#111827", borderRadius: 12, border: isSold(pos) ? `1px solid #334155` : incomplete ? `2px solid ${X.orange}` : `1px solid ${X.cyan}22`, padding: 13, marginBottom: 8, opacity: isSold(pos) ? 0.55 : 1 } },
+            return React.createElement("div", { key: pos.ticker, onClick: e => { if (e.target.closest('button, input, select, textarea, a')) return; setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker); }, style: { background: "#111827", borderRadius: 12, border: isSold(pos) ? `1px solid #334155` : incomplete ? `2px solid ${X.orange}` : `1px solid ${X.cyan}22`, padding: 13, marginBottom: 8, opacity: isSold(pos) ? 0.55 : 1, cursor: "pointer" } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9, minWidth: 0, flex: 1 } },
                   React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: `${X.cyan}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.cyan, flexShrink: 0 } }, pos.ticker),
@@ -3240,7 +3239,7 @@ Antworte NUR mit validem JSON:
                       React.createElement("span", { style: { fontSize: 13, fontWeight: 600 } }, pos.name),
                       React.createElement(TypeBadge, { type: "other" }),
                       isSold(pos) && React.createElement("span", { style: { fontSize: 8, padding: "2px 6px", borderRadius: 8, background: `${X.red}22`, color: X.red, fontWeight: 700, letterSpacing: ".04em" } }, "VERKAUFT"),
-                      !isSold(pos) && (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — ⓘ klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
+                      !isSold(pos) && (!pos.pricePerShare || !pos.purchaseDate) && React.createElement("span", { title: "Kaufpreis/Aktie oder Kaufdatum fehlt — Kachel klicken zum Nachtragen", style: { color: X.orange, fontSize: 14, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => setInfoTicker(pos.ticker) }, "⚠")
                     ),
                     React.createElement("div", { style: { fontSize: 10, color: "#64748b" } }, `${pos.sector} · Moat: ${moatLabel(pos.moat)}`)
                   )
@@ -3261,7 +3260,6 @@ Antworte NUR mit validem JSON:
                     pos.sales?.length > 0 && !isSold(pos) && React.createElement("div", { style: { fontSize: 9, color: X.orange } }, `${pos.sales.reduce((s, sl) => s + sl.shares, 0).toFixed(1)} verkauft`),
                     pr && React.createElement(BDG, { s: pr.sentiment })
                   ),
-                  React.createElement("button", { onClick: () => setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", color: "#64748b", fontSize: 12, flexShrink: 0 } }, "ⓘ"),
                   !isSold(pos) && React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
                   React.createElement("button", { onClick: () => { setSellTicker(sellTicker === pos.ticker ? null : pos.ticker); setSellShares(""); setSellPrice(""); }, style: { background: `${X.orange}22`, border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' }, title: "Verkauf eintragen" }),
                   React.createElement("button", { onClick: () => setConfirmAction({ type: "removeStock", ticker: pos.ticker, name: pos.name }), style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
