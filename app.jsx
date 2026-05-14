@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.05.2026, 22:01 Uhr";
+const BUILD_TIMESTAMP = "14.05.2026, 22:09 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -2751,28 +2751,29 @@ Antworte NUR mit validem JSON:
             { l: "CapEx-Trend", v: hasData ? (trMap[analysis.capexTrend] || "—") : "—", c: hasData ? (analysis.capexTrend === "accelerating" ? X.green : analysis.capexTrend === "stable" ? X.yellow : X.red) : "#64748b", s: hasData ? "Live" : "" },
             { l: "Status", v: hasData ? stMap[analysis.overallStatus] : "—", c: hasData ? X[analysis.overallStatus] : "#64748b", s: hasData ? (analysis.nextEvent || "").slice(0, 32) : "" },
           ].map((c, i) =>
-            React.createElement("div", { key: i, className: c.info ? "has-info" : undefined, onClick: c.info ? (e => { if (e.target.closest('button, input, select, textarea, a')) return; setShowDashInfo(!showDashInfo); }) : undefined, style: { background: "#111827", borderRadius: 12, padding: "12px 11px", border: c.warn ? `2px solid ${X.orange}` : "1px solid #1e293b", minWidth: 0, overflow: c.info && showDashInfo ? "visible" : "hidden", position: "relative" } },
-              React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } },
-                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
-                  React.createElement("span", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, c.l),
-                  c.warn && React.createElement("span", { title: `Unvollständige Daten: ${incompleteStocks.map(s => s.ticker).join(", ")} — Kaufpreis/Aktie oder Kaufdatum fehlt`, style: { color: X.orange, fontSize: 12, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: e => { e.stopPropagation(); setTab("positions"); } }, "⚠")
+            React.createElement("div", { key: i, className: c.info ? "has-info" : undefined, onClick: c.info ? (e => { if (e.target.closest('button, input, select, textarea, a')) return; setShowDashInfo(!showDashInfo); }) : undefined, style: { background: "#111827", borderRadius: 12, padding: "12px 11px", border: c.warn ? `2px solid ${X.orange}` : "1px solid #1e293b", minWidth: 0, overflow: "hidden" } },
+              React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4, gap: 4 } },
+                React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4, minWidth: 0 } },
+                  React.createElement("span", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, c.l),
+                  c.warn && React.createElement("span", { title: `Unvollständige Daten: ${incompleteStocks.map(s => s.ticker).join(", ")} — Kaufpreis/Aktie oder Kaufdatum fehlt`, style: { color: X.orange, fontSize: 12, cursor: "pointer", animation: "pulse 2s infinite", flexShrink: 0 }, onClick: e => { e.stopPropagation(); setTab("positions"); } }, "⚠")
                 ),
-                c.info && React.createElement("span", { className: "info-hint", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 13, height: 13, borderRadius: "50%", border: "1px solid #475569", color: "#94a3b8", fontSize: 8, fontWeight: 700, fontStyle: "italic", lineHeight: 1, fontFamily: "Georgia, serif" } }, "i")
+                c.info && React.createElement("span", { className: "info-hint", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 13, height: 13, borderRadius: "50%", border: `1px solid ${showDashInfo ? X.purple : "#475569"}`, color: showDashInfo ? X.purple : "#94a3b8", fontSize: 8, fontWeight: 700, fontStyle: "italic", lineHeight: 1, fontFamily: "Georgia, serif", flexShrink: 0 } }, "i")
               ),
-              React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: c.c || "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, c.v),
-              c.s && React.createElement("div", { style: { fontSize: 10, color: c.c || "#475569", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, c.s),
-              c.info && showDashInfo && React.createElement("div", { className: "info-panel", style: { position: "absolute", top: "100%", left: 0, right: 0, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, zIndex: 10, marginTop: 4, fontSize: 11, color: "#94a3b8" } },
-                React.createElement("div", null, `Investiert: €${totalInvested.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
-                React.createElement("div", { style: { marginTop: 3 } }, `Aktueller Wert: €${totalValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
-                React.createElement("div", { style: { marginTop: 3, color: totalPL >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: ${totalPL >= 0 ? "+" : ""}${totalPL.toFixed(1)}% (€${(totalValue - totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`),
-                React.createElement("div", { style: { marginTop: 3 } }, `${activeStocks.length} Positionen${soldStocks.length > 0 ? ` (+ ${soldStocks.length} verkauft)` : ""}`),
-                React.createElement("div", { style: { marginTop: 3 } }, `USD/EUR: ${eurUsdRate ? `${eurUsdRate.toFixed(4)} (1$ = €${eurUsdRate.toFixed(4)})` : "—"}`),
-                incompleteStocks.length > 0 && React.createElement("div", { style: { marginTop: 5, paddingTop: 5, borderTop: "1px solid #334155", color: X.orange } },
-                  React.createElement("div", { style: { fontWeight: 600, marginBottom: 3 } }, `⚠ ${incompleteStocks.length} Aktien unvollständig:`),
-                  incompleteStocks.map(s => React.createElement("div", { key: s.ticker, style: { marginTop: 2 } }, `${s.ticker}: ${[!s.pricePerShare && "Kaufpreis/Aktie", !s.purchaseDate && "Kaufdatum"].filter(Boolean).join(", ")} fehlt`))
-                )
-              )
+              React.createElement("div", { style: { fontSize: 16, fontWeight: 700, color: c.c || "#e2e8f0", lineHeight: 1.25, wordBreak: "break-word" } }, c.v),
+              c.s && React.createElement("div", { style: { fontSize: 10, color: c.c || "#475569", marginTop: 2, lineHeight: 1.3, wordBreak: "break-word" } }, c.s)
             )
+          )
+        ),
+        showDashInfo && React.createElement("div", { className: "info-panel", style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 10, padding: 12, marginBottom: 14, fontSize: 12, color: "#cbd5e1", boxShadow: "0 6px 18px #0007" } },
+          React.createElement("div", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 } }, "Portfolio-Detail"),
+          React.createElement("div", null, `Investiert: €${totalInvested.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+          React.createElement("div", { style: { marginTop: 3 } }, `Aktueller Wert: €${totalValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
+          React.createElement("div", { style: { marginTop: 3, color: totalPL >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: ${totalPL >= 0 ? "+" : ""}${totalPL.toFixed(1)}% (€${(totalValue - totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`),
+          React.createElement("div", { style: { marginTop: 3 } }, `${activeStocks.length} Positionen${soldStocks.length > 0 ? ` (+ ${soldStocks.length} verkauft)` : ""}`),
+          React.createElement("div", { style: { marginTop: 3 } }, `USD/EUR: ${eurUsdRate ? `${eurUsdRate.toFixed(4)} (1$ = €${eurUsdRate.toFixed(4)})` : "—"}`),
+          incompleteStocks.length > 0 && React.createElement("div", { style: { marginTop: 8, paddingTop: 8, borderTop: "1px solid #334155", color: X.orange } },
+            React.createElement("div", { style: { fontWeight: 600, marginBottom: 3 } }, `⚠ ${incompleteStocks.length} Aktien unvollständig:`),
+            incompleteStocks.map(s => React.createElement("div", { key: s.ticker, style: { marginTop: 2 } }, `${s.ticker}: ${[!s.pricePerShare && "Kaufpreis/Aktie", !s.purchaseDate && "Kaufdatum"].filter(Boolean).join(", ")} fehlt`))
           )
         ),
         /* Macro Context Strip on Overview */
