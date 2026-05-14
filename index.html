@@ -20,6 +20,11 @@
     ::selection { background: #6366f155; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
     @keyframes earningsPulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.85;transform:scale(1.02)} }
+    @keyframes infoPanelIn { from { opacity:0; transform:translateY(-6px); max-height:0; } to { opacity:1; transform:translateY(0); max-height:1200px; } }
+    .info-panel { animation: infoPanelIn .22s ease-out; overflow: hidden; }
+    .info-hint { transition: color .15s, border-color .15s, background .15s; pointer-events: none; }
+    .has-info { cursor: pointer; }
+    .has-info:hover .info-hint { color: #cbd5e1; border-color: #64748b; background: #1e293b; }
     @keyframes bucketTileIn { from { opacity:0; transform:scale(.7) translateY(-4px); } to { opacity:1; transform:scale(1) translateY(0); } }
     @keyframes bucketPillIn { from { opacity:0; transform:scale(.6); } to { opacity:1; transform:scale(1); } }
     .bucket-tile { animation: bucketTileIn .22s cubic-bezier(.34,1.56,.64,1); transition: transform .12s ease, box-shadow .15s ease, border-color .15s ease; touch-action: manipulation; }

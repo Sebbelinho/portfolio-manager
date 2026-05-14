@@ -1,7 +1,7 @@
 const { useState, useCallback, useEffect, useRef } = React;
 
 /* ═══ BUILD INFO ═══ */
-const BUILD_TIMESTAMP = "14.05.2026, 21:50 Uhr";
+const BUILD_TIMESTAMP = "14.05.2026, 22:01 Uhr";
 
 /* ═══ HELPERS ═══ */
 let _abortCtrl = null;
@@ -2627,9 +2627,9 @@ Antworte NUR mit validem JSON:
             ),
             lastRun && React.createElement("div", { className: "m", style: { fontSize: 9, color: "#475569", marginTop: 2 } }, `Update: ${lastRun.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}${dataLoaded && !busy ? " (gespeichert)" : ""}`)
           ),
-          React.createElement("div", { style: { position: "relative" } },
-            React.createElement("button", { onClick: () => setShowInfo(!showInfo), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 14, padding: 4 } }, "ⓘ"),
-            showInfo && React.createElement("div", { style: { position: "absolute", right: 0, top: 24, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: "8px 12px", whiteSpace: "nowrap", zIndex: 100, fontSize: 10, color: "#94a3b8", boxShadow: "0 4px 12px #0008" } },
+          React.createElement("div", { className: "has-info", onClick: e => { if (e.target.closest('button, input, select, textarea, a')) return; setShowInfo(!showInfo); }, style: { position: "relative", padding: 4 } },
+            React.createElement("span", { className: "info-hint", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16, borderRadius: "50%", border: "1px solid #475569", color: "#94a3b8", fontSize: 10, fontWeight: 700, fontStyle: "italic", lineHeight: 1, fontFamily: "Georgia, serif" } }, "i"),
+            showInfo && React.createElement("div", { className: "info-panel", style: { position: "absolute", right: 0, top: 28, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: "8px 12px", whiteSpace: "nowrap", zIndex: 100, fontSize: 10, color: "#94a3b8", boxShadow: "0 4px 12px #0008" } },
               React.createElement("span", { style: { color: "#64748b" } }, "Stand: "),
               React.createElement("span", { className: "m", style: { color: "#e2e8f0" } }, BUILD_TIMESTAMP)
             )
@@ -2751,17 +2751,17 @@ Antworte NUR mit validem JSON:
             { l: "CapEx-Trend", v: hasData ? (trMap[analysis.capexTrend] || "—") : "—", c: hasData ? (analysis.capexTrend === "accelerating" ? X.green : analysis.capexTrend === "stable" ? X.yellow : X.red) : "#64748b", s: hasData ? "Live" : "" },
             { l: "Status", v: hasData ? stMap[analysis.overallStatus] : "—", c: hasData ? X[analysis.overallStatus] : "#64748b", s: hasData ? (analysis.nextEvent || "").slice(0, 32) : "" },
           ].map((c, i) =>
-            React.createElement("div", { key: i, style: { background: "#111827", borderRadius: 12, padding: "12px 11px", border: c.warn ? `2px solid ${X.orange}` : "1px solid #1e293b", minWidth: 0, overflow: c.info && showDashInfo ? "visible" : "hidden", position: "relative" } },
+            React.createElement("div", { key: i, className: c.info ? "has-info" : undefined, onClick: c.info ? (e => { if (e.target.closest('button, input, select, textarea, a')) return; setShowDashInfo(!showDashInfo); }) : undefined, style: { background: "#111827", borderRadius: 12, padding: "12px 11px", border: c.warn ? `2px solid ${X.orange}` : "1px solid #1e293b", minWidth: 0, overflow: c.info && showDashInfo ? "visible" : "hidden", position: "relative" } },
               React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 } },
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 4 } },
                   React.createElement("span", { style: { fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: ".06em" } }, c.l),
-                  c.warn && React.createElement("span", { title: `Unvollständige Daten: ${incompleteStocks.map(s => s.ticker).join(", ")} — Kaufpreis/Aktie oder Kaufdatum fehlt`, style: { color: X.orange, fontSize: 12, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: () => { setTab("positions"); } }, "⚠")
+                  c.warn && React.createElement("span", { title: `Unvollständige Daten: ${incompleteStocks.map(s => s.ticker).join(", ")} — Kaufpreis/Aktie oder Kaufdatum fehlt`, style: { color: X.orange, fontSize: 12, cursor: "pointer", animation: "pulse 2s infinite" }, onClick: e => { e.stopPropagation(); setTab("positions"); } }, "⚠")
                 ),
-                c.info && React.createElement("button", { onClick: () => setShowDashInfo(!showDashInfo), style: { background: "none", border: "none", color: "#64748b", cursor: "pointer", fontSize: 10, padding: 0, lineHeight: 1 } }, "ⓘ")
+                c.info && React.createElement("span", { className: "info-hint", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 13, height: 13, borderRadius: "50%", border: "1px solid #475569", color: "#94a3b8", fontSize: 8, fontWeight: 700, fontStyle: "italic", lineHeight: 1, fontFamily: "Georgia, serif" } }, "i")
               ),
               React.createElement("div", { style: { fontSize: 20, fontWeight: 700, color: c.c || "#e2e8f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, c.v),
               c.s && React.createElement("div", { style: { fontSize: 10, color: c.c || "#475569", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } }, c.s),
-              c.info && showDashInfo && React.createElement("div", { style: { position: "absolute", top: "100%", left: 0, right: 0, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, zIndex: 10, marginTop: 4, fontSize: 11, color: "#94a3b8" } },
+              c.info && showDashInfo && React.createElement("div", { className: "info-panel", style: { position: "absolute", top: "100%", left: 0, right: 0, background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, zIndex: 10, marginTop: 4, fontSize: 11, color: "#94a3b8" } },
                 React.createElement("div", null, `Investiert: €${totalInvested.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
                 React.createElement("div", { style: { marginTop: 3 } }, `Aktueller Wert: €${totalValue.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`),
                 React.createElement("div", { style: { marginTop: 3, color: totalPL >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: ${totalPL >= 0 ? "+" : ""}${totalPL.toFixed(1)}% (€${(totalValue - totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`),
@@ -3065,7 +3065,7 @@ Antworte NUR mit validem JSON:
           const pr = positions[pos.ticker];
           const fhd = finnhubData[pos.ticker];
           const incomplete = !pos.pricePerShare || !pos.purchaseDate;
-          return React.createElement("div", { key: pos.ticker, onClick: e => { if (e.target.closest('button, input, select, textarea, a')) return; setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker); }, style: { background: "#111827", borderRadius: 12, border: isSold(pos) ? `1px solid #334155` : incomplete ? `2px solid ${X.orange}` : "1px solid #1e293b", padding: 13, marginBottom: 8, opacity: isSold(pos) ? 0.55 : 1, cursor: "pointer" } },
+          return React.createElement("div", { key: pos.ticker, className: "has-info", onClick: e => { if (e.target.closest('button, input, select, textarea, a')) return; setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker); }, style: { background: "#111827", borderRadius: 12, border: isSold(pos) ? `1px solid #334155` : incomplete ? `2px solid ${X.orange}` : "1px solid #1e293b", padding: 13, marginBottom: 8, opacity: isSold(pos) ? 0.55 : 1, cursor: "pointer" } },
             React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9, minWidth: 0, flex: 1 } },
                 React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: "#1e293b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.purple, flexShrink: 0 } }, pos.ticker),
@@ -3095,6 +3095,7 @@ Antworte NUR mit validem JSON:
                   pos.sales?.length > 0 && !isSold(pos) && React.createElement("div", { style: { fontSize: 9, color: X.orange } }, `${pos.sales.reduce((s, sl) => s + sl.shares, 0).toFixed(1)} verkauft`),
                   pr && React.createElement(BDG, { s: pr.sentiment })
                 ),
+                React.createElement("span", { className: "info-hint", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, borderRadius: "50%", border: `1px solid ${infoTicker === pos.ticker ? X.purple : "#475569"}`, color: infoTicker === pos.ticker ? X.purple : "#94a3b8", fontSize: 9, fontWeight: 700, fontStyle: "italic", lineHeight: 1, fontFamily: "Georgia, serif", flexShrink: 0 } }, "i"),
                 !isSold(pos) && React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
                 React.createElement("button", { onClick: () => { setSellTicker(sellTicker === pos.ticker ? null : pos.ticker); setSellShares(""); setSellPrice(""); }, style: { background: `${X.orange}22`, border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' }, title: "Verkauf eintragen" }),
                 React.createElement("button", { onClick: () => setConfirmAction({ type: "removeStock", ticker: pos.ticker, name: pos.name }), style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
@@ -3116,7 +3117,7 @@ Antworte NUR mit validem JSON:
                 React.createElement("button", { onClick: () => setConfirmAction(null), style: { flex: 1, padding: 8, borderRadius: 8, border: "1px solid #334155", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#94a3b8" } }, "Abbrechen")
               )
             ),
-            infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
+            infoTicker === pos.ticker && React.createElement("div", { className: "info-panel", style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
               (() => { const plI = calcPL(pos, fhd?.price, eurUsdRate); return React.createElement(React.Fragment, null,
                 plI && React.createElement("div", null, `Gesamt investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Ø €${plI.avgCost.toFixed(2)} · ${plI.boughtShares.toFixed(2)} gekauft${plI.soldShares > 0 ? ` · ${plI.soldShares.toFixed(2)} verkauft · ${plI.totalShares.toFixed(2)} verbleibend` : ` · ${plI.totalShares.toFixed(2)} Anteile`}`),
                 plI && !isSold(pos) && React.createElement("div", { style: { marginTop: 3, color: plI.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(plI.currentValue - plI.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${plI.plPct >= 0 ? "+" : ""}${plI.plPct.toFixed(1)}%), Kurs @€${(fhd.price * eurUsdRate).toFixed(2)}`),
@@ -3239,7 +3240,7 @@ Antworte NUR mit validem JSON:
             const pr = positions[pos.ticker];
             const fhd = finnhubData[pos.ticker];
             const incomplete = !pos.pricePerShare || !pos.purchaseDate;
-            return React.createElement("div", { key: pos.ticker, onClick: e => { if (e.target.closest('button, input, select, textarea, a')) return; setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker); }, style: { background: "#111827", borderRadius: 12, border: isSold(pos) ? `1px solid #334155` : incomplete ? `2px solid ${X.orange}` : `1px solid ${X.cyan}22`, padding: 13, marginBottom: 8, opacity: isSold(pos) ? 0.55 : 1, cursor: "pointer" } },
+            return React.createElement("div", { key: pos.ticker, className: "has-info", onClick: e => { if (e.target.closest('button, input, select, textarea, a')) return; setInfoTicker(infoTicker === pos.ticker ? null : pos.ticker); }, style: { background: "#111827", borderRadius: 12, border: isSold(pos) ? `1px solid #334155` : incomplete ? `2px solid ${X.orange}` : `1px solid ${X.cyan}22`, padding: 13, marginBottom: 8, opacity: isSold(pos) ? 0.55 : 1, cursor: "pointer" } },
               React.createElement("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" } },
                 React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 9, minWidth: 0, flex: 1 } },
                   React.createElement("div", { className: "m", style: { width: 32, height: 32, borderRadius: 7, background: `${X.cyan}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, color: X.cyan, flexShrink: 0 } }, pos.ticker),
@@ -3269,6 +3270,7 @@ Antworte NUR mit validem JSON:
                     pos.sales?.length > 0 && !isSold(pos) && React.createElement("div", { style: { fontSize: 9, color: X.orange } }, `${pos.sales.reduce((s, sl) => s + sl.shares, 0).toFixed(1)} verkauft`),
                     pr && React.createElement(BDG, { s: pr.sentiment })
                   ),
+                  React.createElement("span", { className: "info-hint", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, borderRadius: "50%", border: `1px solid ${infoTicker === pos.ticker ? X.cyan : "#475569"}`, color: infoTicker === pos.ticker ? X.cyan : "#94a3b8", fontSize: 9, fontWeight: 700, fontStyle: "italic", lineHeight: 1, fontFamily: "Georgia, serif", flexShrink: 0 } }, "i"),
                   !isSold(pos) && React.createElement("button", { onClick: () => { setNachkaufTicker(nachkaufTicker === pos.ticker ? null : pos.ticker); setNachkaufBetrag(""); }, style: { background: "#6366f122", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' }, title: "Nachkauf" }),
                   React.createElement("button", { onClick: () => { setSellTicker(sellTicker === pos.ticker ? null : pos.ticker); setSellShares(""); setSellPrice(""); }, style: { background: `${X.orange}22`, border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' }, title: "Verkauf eintragen" }),
                   React.createElement("button", { onClick: () => setConfirmAction({ type: "removeStock", ticker: pos.ticker, name: pos.name }), style: { background: "#dc262622", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: 6, lineHeight: 1, display: "flex", alignItems: "center", flexShrink: 0 }, dangerouslySetInnerHTML: { __html: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>' } })
@@ -3290,7 +3292,7 @@ Antworte NUR mit validem JSON:
                   React.createElement("button", { onClick: () => setConfirmAction(null), style: { flex: 1, padding: 8, borderRadius: 8, border: "1px solid #334155", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", background: "transparent", color: "#94a3b8" } }, "Abbrechen")
                 )
               ),
-              infoTicker === pos.ticker && React.createElement("div", { style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
+              infoTicker === pos.ticker && React.createElement("div", { className: "info-panel", style: { background: "#1e293b", border: "1px solid #334155", borderRadius: 8, padding: 10, marginTop: 8, fontSize: 11, color: "#94a3b8" } },
                 (() => { const plI = calcPL(pos, fhd?.price, eurUsdRate); return React.createElement(React.Fragment, null,
                   plI && React.createElement("div", null, `Gesamt investiert: €${pos.cost.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · Ø €${plI.avgCost.toFixed(2)} · ${plI.boughtShares.toFixed(2)} gekauft${plI.soldShares > 0 ? ` · ${plI.soldShares.toFixed(2)} verkauft · ${plI.totalShares.toFixed(2)} verbleibend` : ` · ${plI.totalShares.toFixed(2)} Anteile`}`),
                   plI && !isSold(pos) && React.createElement("div", { style: { marginTop: 3, color: plI.plPct >= 0 ? X.green : X.red, fontWeight: 600 } }, `P/L: €${(plI.currentValue - plI.totalInvested).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} (${plI.plPct >= 0 ? "+" : ""}${plI.plPct.toFixed(1)}%), Kurs @€${(fhd.price * eurUsdRate).toFixed(2)}`),
@@ -3698,16 +3700,16 @@ Antworte NUR mit validem JSON:
             ),
             timing.extraAllocations?.length > 0 ? timing.extraAllocations.map((a, i) => {
               const expanded = dcaDetail === `tex-${i}`;
-              return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < timing.extraAllocations.length - 1 ? "1px solid #1e293b22" : "none" } },
+              return React.createElement("div", { key: i, className: a.detail ? "has-info" : undefined, onClick: a.detail ? (e => { if (e.target.closest('button, input, select, textarea, a')) return; setDcaDetail(expanded ? null : `tex-${i}`); }) : undefined, style: { padding: "10px 15px", borderBottom: i < timing.extraAllocations.length - 1 ? "1px solid #1e293b22" : "none" } },
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
                   React.createElement("span", { style: { fontSize: 12, fontWeight: 600 } }, a.ticker),
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
                     React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.green } }, `€${a.amount?.toFixed(2)}`),
-                    a.detail && React.createElement("button", { onClick: () => setDcaDetail(expanded ? null : `tex-${i}`), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 6, color: expanded ? X.green : "#64748b", fontSize: 11, flexShrink: 0 } }, "ⓘ")
+                    a.detail && React.createElement("span", { className: "info-hint", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, borderRadius: "50%", border: `1px solid ${expanded ? X.green : "#475569"}`, color: expanded ? X.green : "#94a3b8", fontSize: 9, fontWeight: 700, fontStyle: "italic", lineHeight: 1, fontFamily: "Georgia, serif", flexShrink: 0 } }, "i")
                   )
                 ),
                 React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, a.reason),
-                expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, a.detail)
+                expanded && React.createElement("div", { className: "info-panel", style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, a.detail)
               );
             }) : React.createElement("div", { style: { padding: "10px 15px", fontSize: 11, color: "#475569" } },
               "Kein Handlungsbedarf", timing.noExtraReason && React.createElement("span", { style: { color: "#64748b", marginLeft: 4 } }, `— ${timing.noExtraReason}`)
@@ -3721,7 +3723,7 @@ Antworte NUR mit validem JSON:
             ),
             timing.rebalanceTrades?.length > 0 ? timing.rebalanceTrades.map((t, i) => {
               const expanded = dcaDetail === `trebal-${i}`;
-              return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < timing.rebalanceTrades.length - 1 ? "1px solid #1e293b22" : "none" } },
+              return React.createElement("div", { key: i, className: t.detail ? "has-info" : undefined, onClick: t.detail ? (e => { if (e.target.closest('button, input, select, textarea, a')) return; setDcaDetail(expanded ? null : `trebal-${i}`); }) : undefined, style: { padding: "10px 15px", borderBottom: i < timing.rebalanceTrades.length - 1 ? "1px solid #1e293b22" : "none" } },
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
                     React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.red } }, t.fromTicker),
@@ -3730,11 +3732,11 @@ Antworte NUR mit validem JSON:
                   ),
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
                     React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.cyan } }, `€${t.amount?.toFixed(2)}`),
-                    t.detail && React.createElement("button", { onClick: () => setDcaDetail(expanded ? null : `trebal-${i}`), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 6, color: expanded ? X.cyan : "#64748b", fontSize: 11, flexShrink: 0 } }, "ⓘ")
+                    t.detail && React.createElement("span", { className: "info-hint", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, borderRadius: "50%", border: `1px solid ${expanded ? X.cyan : "#475569"}`, color: expanded ? X.cyan : "#94a3b8", fontSize: 9, fontWeight: 700, fontStyle: "italic", lineHeight: 1, fontFamily: "Georgia, serif", flexShrink: 0 } }, "i")
                   )
                 ),
                 React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, t.reason),
-                expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
+                expanded && React.createElement("div", { className: "info-panel", style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
               );
             }) : React.createElement("div", { style: { padding: "10px 15px", fontSize: 11, color: "#475569" } },
               "Kein Handlungsbedarf", timing.noRebalanceReason && React.createElement("span", { style: { color: "#64748b", marginLeft: 4 } }, `— ${timing.noRebalanceReason}`)
@@ -3748,16 +3750,16 @@ Antworte NUR mit validem JSON:
             ),
             timing.takeProfits?.length > 0 ? timing.takeProfits.map((t, i) => {
               const expanded = dcaDetail === `tprofit-${i}`;
-              return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < timing.takeProfits.length - 1 ? "1px solid #1e293b22" : "none" } },
+              return React.createElement("div", { key: i, className: t.detail ? "has-info" : undefined, onClick: t.detail ? (e => { if (e.target.closest('button, input, select, textarea, a')) return; setDcaDetail(expanded ? null : `tprofit-${i}`); }) : undefined, style: { padding: "10px 15px", borderBottom: i < timing.takeProfits.length - 1 ? "1px solid #1e293b22" : "none" } },
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
                   React.createElement("span", { style: { fontSize: 12, fontWeight: 600 } }, t.ticker),
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
                     React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.orange } }, `€${t.amount?.toFixed(2)}`),
-                    t.detail && React.createElement("button", { onClick: () => setDcaDetail(expanded ? null : `tprofit-${i}`), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 6, color: expanded ? X.orange : "#64748b", fontSize: 11, flexShrink: 0 } }, "ⓘ")
+                    t.detail && React.createElement("span", { className: "info-hint", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, borderRadius: "50%", border: `1px solid ${expanded ? X.orange : "#475569"}`, color: expanded ? X.orange : "#94a3b8", fontSize: 9, fontWeight: 700, fontStyle: "italic", lineHeight: 1, fontFamily: "Georgia, serif", flexShrink: 0 } }, "i")
                   )
                 ),
                 React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, t.reason),
-                expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
+                expanded && React.createElement("div", { className: "info-panel", style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
               );
             }) : React.createElement("div", { style: { padding: "10px 15px", fontSize: 11, color: "#475569" } },
               "Kein Handlungsbedarf", timing.noTakeProfitReason && React.createElement("span", { style: { color: "#64748b", marginLeft: 4 } }, `— ${timing.noTakeProfitReason}`)
@@ -3876,7 +3878,7 @@ Antworte NUR mit validem JSON:
             dcaPlan.plan.map((p, i) => {
               const prioCol = p.priority === "hoch" ? X.green : p.priority === "mittel" ? X.yellow : "#64748b";
               const expanded = dcaDetail === `plan-${i}`;
-              return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < dcaPlan.plan.length - 1 ? "1px solid #1e293b22" : "none" } },
+              return React.createElement("div", { key: i, className: p.detail ? "has-info" : undefined, onClick: p.detail ? (e => { if (e.target.closest('button, input, select, textarea, a')) return; setDcaDetail(expanded ? null : `plan-${i}`); }) : undefined, style: { padding: "10px 15px", borderBottom: i < dcaPlan.plan.length - 1 ? "1px solid #1e293b22" : "none" } },
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 } },
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
                     React.createElement("span", { style: { fontSize: 12, fontWeight: 600 } }, `${p.ticker}`),
@@ -3885,14 +3887,14 @@ Antworte NUR mit validem JSON:
                   ),
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
                     React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.green } }, `€${p.monthlyAmount?.toFixed(2)}`),
-                    p.detail && React.createElement("button", { onClick: () => setDcaDetail(expanded ? null : `plan-${i}`), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 6, color: expanded ? X.purple : "#64748b", fontSize: 11, flexShrink: 0 } }, "ⓘ")
+                    p.detail && React.createElement("span", { className: "info-hint", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, borderRadius: "50%", border: `1px solid ${expanded ? X.purple : "#475569"}`, color: expanded ? X.purple : "#94a3b8", fontSize: 9, fontWeight: 700, fontStyle: "italic", lineHeight: 1, fontFamily: "Georgia, serif", flexShrink: 0 } }, "i")
                   )
                 ),
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
                   React.createElement("span", { style: { fontSize: 10, color: "#94a3b8", flex: 1 } }, p.reason),
                   React.createElement("span", { className: "m", style: { fontSize: 10, color: "#475569", flexShrink: 0, marginLeft: 8 } }, `${p.percentage}%`)
                 ),
-                expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, p.detail)
+                expanded && React.createElement("div", { className: "info-panel", style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, p.detail)
               );
             })
           ),
@@ -3904,7 +3906,7 @@ Antworte NUR mit validem JSON:
             ),
             dcaPlan.rebalanceTrades.map((t, i) => {
               const expanded = dcaDetail === `rebal-${i}`;
-              return React.createElement("div", { key: i, style: { padding: "10px 15px", borderBottom: i < dcaPlan.rebalanceTrades.length - 1 ? "1px solid #1e293b22" : "none" } },
+              return React.createElement("div", { key: i, className: t.detail ? "has-info" : undefined, onClick: t.detail ? (e => { if (e.target.closest('button, input, select, textarea, a')) return; setDcaDetail(expanded ? null : `rebal-${i}`); }) : undefined, style: { padding: "10px 15px", borderBottom: i < dcaPlan.rebalanceTrades.length - 1 ? "1px solid #1e293b22" : "none" } },
                 React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 } },
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 6 } },
                     React.createElement("span", { style: { fontSize: 12, fontWeight: 600, color: X.red } }, t.fromTicker),
@@ -3913,11 +3915,11 @@ Antworte NUR mit validem JSON:
                   ),
                   React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
                     React.createElement("span", { className: "m", style: { fontSize: 13, fontWeight: 700, color: X.cyan } }, `€${t.amount?.toFixed(2)}`),
-                    t.detail && React.createElement("button", { onClick: () => setDcaDetail(expanded ? null : `rebal-${i}`), style: { background: "#33415522", border: "none", cursor: "pointer", padding: "3px 5px", borderRadius: 6, color: expanded ? X.cyan : "#64748b", fontSize: 11, flexShrink: 0 } }, "ⓘ")
+                    t.detail && React.createElement("span", { className: "info-hint", style: { display: "inline-flex", alignItems: "center", justifyContent: "center", width: 14, height: 14, borderRadius: "50%", border: `1px solid ${expanded ? X.cyan : "#475569"}`, color: expanded ? X.cyan : "#94a3b8", fontSize: 9, fontWeight: 700, fontStyle: "italic", lineHeight: 1, fontFamily: "Georgia, serif", flexShrink: 0 } }, "i")
                   )
                 ),
                 React.createElement("div", { style: { fontSize: 10, color: "#94a3b8" } }, t.reason),
-                expanded && React.createElement("div", { style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
+                expanded && React.createElement("div", { className: "info-panel", style: { marginTop: 6, padding: "8px 10px", background: "#0f172a", borderRadius: 8, fontSize: 11, color: "#94a3b8", lineHeight: 1.6 } }, t.detail)
               );
             })
           ),
